@@ -19,9 +19,11 @@ public class UserService {
             u.setFirebaseUid(firebaseUid);
             u.setEmail(email);
             u.setName((name == null || name.isBlank()) ? "User" : name);
-            u.setRole(Role.STUDENT); // domyślna rola
 
-            // index z local-part maila (tak jak robiłeś na froncie)
+            // bezpiecznie: domyślna rola zawsze STUDENT
+            u.setRole(Role.STUDENT);
+
+            // index = to co przed @
             String local = email != null ? email.split("@")[0] : null;
             if (local != null && !local.isBlank()) u.setIndexNumber(local);
 
