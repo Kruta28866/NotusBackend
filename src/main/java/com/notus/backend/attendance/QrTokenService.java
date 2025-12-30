@@ -42,7 +42,7 @@ public class QrTokenService {
     }
 
     public TokenData verifyAndParse(String token) {
-        if (token == null) throw new IllegalArgumentException("Brak tokenu QR");
+        if (token == null || token.isBlank()) throw new IllegalArgumentException("Brak tokenu QR");
 
         String[] parts = token.split("\\.");
         if (parts.length != 4) throw new IllegalArgumentException("Zły format tokenu QR");

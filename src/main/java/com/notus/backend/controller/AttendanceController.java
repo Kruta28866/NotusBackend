@@ -1,7 +1,11 @@
 package com.notus.backend.controller;
 
 import com.notus.backend.attendance.AttendanceService;
-import com.notus.backend.attendance.*;
+import com.notus.backend.attendance.dto.CheckInRequest;
+import com.notus.backend.attendance.dto.CheckInResponse;
+import com.notus.backend.attendance.dto.CreateSessionRequest;
+import com.notus.backend.attendance.dto.CreateSessionResponse;
+import com.notus.backend.attendance.dto.QrResponse;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -9,30 +13,30 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/attendance")
 public class AttendanceController {
 
-    private final AttendanceService service;
+    private final AttendanceService attendanceService;
 
-    public AttendanceController(AttendanceService service) {
-        this.service = service;
+    public AttendanceController(AttendanceService attendanceService) {
+        this.attendanceService = attendanceService;
     }
 
-    // Teacher: tworzy sesję
+    // teacher: tworzy sesję
     @PostMapping("/sessions")
-    public com.notus.backend.attendance.dto.CreateSessionResponse createSession(Authentication auth, @RequestBody com.notus.backend.attendance.dto.CreateSessionRequest req) {
-        String uid = (String) auth.getPrincipal(); // z FirebaseAuthFilter
-        return service.createSession(uid, req);
-    }
-
-    // Teacher: generuje QR dla sesji
-    @PostMapping("/sessions/{id}/qr")
-    public QrResponse generateQr(Authentication auth, @PathVariable("id") Long sessionId) {
+    public CreateSessionResponse createSession(Authentication auth, @RequestBody CreateSessionRequest req) {
         String uid = (String) auth.getPrincipal();
-        return service.generateQr(uid, sessionId);
+        return attendanceService.createSession(uid, req);
     }
 
-    // Student: check-in po zeskanowaniu QR
+    // teacher: generuje QR
+    @GetMapping("/sessions/{sessionId}/qr")
+    public QrResponse qr(Authentication auth, @PathVariable Long sessionId) {
+        String uid = (String) auth.getPrincipal();
+        return attendanceService.generateQr(uid, sessionId);
+    }
+
+    // student: check-in po zeskanowaniu QR
     @PostMapping("/check-in")
-    public com.notus.backend.attendance.dto.CheckInResponse checkIn(Authentication auth, @RequestBody com.notus.backend.attendance.dto.CheckInRequest req) {
+    public CheckInResponse checkIn(Authentication auth, @RequestBody CheckInRequest req) {
         String uid = (String) auth.getPrincipal();
-        return service.checkIn(uid, req);
+        return attendanceService.checkIn(uid, req);
     }
 }

@@ -1,4 +1,4 @@
-package com.notus.backend.attendance;
+package com.notus.backend.attendance.dto;
 
 public record QrResponse(
         Long sessionId,

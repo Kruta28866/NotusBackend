@@ -1,6 +1,6 @@
 package com.notus.backend.attendance;
 
-import com.notus.backend.attendance.*;
+import com.notus.backend.attendance.dto.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,7 +27,7 @@ public class AttendanceService {
     }
 
     @Transactional
-    public com.notus.backend.attendance.dto.CreateSessionResponse createSession(String teacherUid, com.notus.backend.attendance.dto.CreateSessionRequest req) {
+    public CreateSessionResponse createSession(String teacherUid, CreateSessionRequest req) {
         if (req == null || req.title() == null || req.title().isBlank()) {
             throw new IllegalArgumentException("Brak tytułu sesji");
         }
@@ -39,7 +39,7 @@ public class AttendanceService {
         s.setCreatedAt(Instant.now());
 
         s = sessionRepo.save(s);
-        return new com.notus.backend.attendance.dto.CreateSessionResponse(s.getId(), s.getTitle(), s.getCreatedAt(), s.isActive());
+        return new CreateSessionResponse(s.getId(), s.getTitle(), s.getCreatedAt(), s.isActive());
     }
 
     @Transactional(readOnly = true)
@@ -53,15 +53,13 @@ public class AttendanceService {
 
         String qrToken = qrTokenService.createToken(s.getId());
         long expiresAt = Instant.now().getEpochSecond() + qrTokenService.ttlSeconds();
-
-        // QR zawiera token (payload + podpis)
         String pngBase64 = qrImageService.toPngBase64(qrToken, 320);
 
         return new QrResponse(s.getId(), qrToken, pngBase64, expiresAt);
     }
 
     @Transactional
-    public com.notus.backend.attendance.dto.CheckInResponse checkIn(String studentUid, com.notus.backend.attendance.dto.CheckInRequest req) {
+    public CheckInResponse checkIn(String studentUid, CheckInRequest req) {
         if (req == null || req.qrToken() == null || req.qrToken().isBlank()) {
             throw new IllegalArgumentException("Brak qrToken");
         }
@@ -75,7 +73,6 @@ public class AttendanceService {
             throw new IllegalArgumentException("Sesja nieaktywna");
         }
 
-        // anty-duplikacja
         if (recordRepo.findBySessionIdAndStudentUid(s.getId(), studentUid).isPresent()) {
             throw new IllegalArgumentException("Obecność już zarejestrowana");
         }
@@ -86,6 +83,6 @@ public class AttendanceService {
         r.setCheckedInAt(Instant.now());
         r = recordRepo.save(r);
 
-        return new com.notus.backend.attendance.dto.CheckInResponse(r.getSessionId(), r.getStudentUid(), r.getCheckedInAt());
+        return new CheckInResponse(r.getSessionId(), r.getStudentUid(), r.getCheckedInAt());
     }
 }
