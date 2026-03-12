@@ -20,7 +20,8 @@ import java.util.Map;
 public class FirebaseAuthFilter extends OncePerRequestFilter {
 
     // dopuszczamy tylko domenę uczelnianą
-    private static final String ALLOWED_DOMAIN = "@pjwstk.edu.pl";
+    private static final List<String> ALLOWED_DOMAINS =
+            List.of("@pjwstk.edu.pl", "@gmail.com");
 
     @Override
     protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
@@ -45,7 +46,10 @@ public class FirebaseAuthFilter extends OncePerRequestFilter {
             FirebaseToken decoded = FirebaseAuth.getInstance().verifyIdToken(token);
 
             String email = decoded.getEmail();
-            if (email == null || !email.toLowerCase().endsWith(ALLOWED_DOMAIN)) {
+            boolean allowed = email != null && ALLOWED_DOMAINS.stream()
+                    .anyMatch(d -> email.toLowerCase().endsWith(d));
+
+            if (!allowed) {
                 response.setStatus(HttpStatus.FORBIDDEN.value());
                 response.getWriter().write("Niedozwolona domena email");
                 return;
