@@ -1,6 +1,6 @@
 package com.notus.backend.configuration;
 
-import com.notus.backend.auth.FirebaseAuthFilter;
+import com.notus.backend.auth.ClerkAuthFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -25,7 +25,8 @@ public class SecurityConfig {
                         .anyRequest().permitAll()
                 );
 
-        http.addFilterBefore(new FirebaseAuthFilter(), UsernamePasswordAuthenticationFilter.class);
+        http.addFilterBefore(new ClerkAuthFilter(), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 }
+

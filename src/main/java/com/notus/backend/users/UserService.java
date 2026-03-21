@@ -13,12 +13,12 @@ public class UserService {
     }
 
     @Transactional
-    public UserDto findOrCreate(String firebaseUid, String email, String name) {
+    public UserDto findOrCreate(String clerkUserId, String email, String name) {
         Role targetRole = roleFromEmail(email);
 
-        var user = repo.findByFirebaseUid(firebaseUid).orElseGet(() -> {
+        var user = repo.findByClerkUserId(clerkUserId).orElseGet(() -> {
             User u = new User();
-            u.setFirebaseUid(firebaseUid);
+            u.setClerkUserId(clerkUserId);
             u.setEmail(email);
             u.setName((name == null || name.isBlank()) ? "User" : name);
 
@@ -33,6 +33,7 @@ public class UserService {
 
             return repo.save(u);
         });
+
 
         // ✅ jeśli user już istnieje, to (poza ADMIN) aktualizujemy rolę wg domeny
         if (email != null && user.getRole() != Role.ADMIN && user.getRole() != targetRole) {
@@ -61,3 +62,4 @@ public class UserService {
         return Role.STUDENT;
     }
 }
+

@@ -9,6 +9,8 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @RestController
 @RequestMapping("/api/attendance")
 public class AttendanceController {
@@ -21,14 +23,24 @@ public class AttendanceController {
         this.userRepository = userRepository;
     }
 
-    // 1) teacher tworzy sesję
+    private User getOrCreateUser(String uid) {
+        return userRepository.findByClerkUserId(uid)
+                .orElseGet(() -> {
+                    User nu = new User();
+                    nu.setClerkUserId(uid);
+                    nu.setName("Nowy użytkownik");
+                    nu.setEmail(uid + "@placeholder.local");
+                    nu.setRole(Role.TEACHER); // tymczasowo
+                    return userRepository.save(nu);
+                });
+    }
+
     @PostMapping("/sessions")
     @ResponseStatus(HttpStatus.CREATED)
     public CreateSessionResponse createSession(Authentication auth, @RequestBody CreateSessionRequest req) {
         String uid = (String) auth.getPrincipal();
 
-        User u = userRepository.findByFirebaseUid(uid)
-                .orElseThrow(() -> new IllegalStateException("Brak usera w bazie dla uid=" + uid));
+        User u = getOrCreateUser(uid);
 
         if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
             throw new IllegalArgumentException("Tylko TEACHER/ADMIN może tworzyć sesje");
@@ -37,13 +49,11 @@ public class AttendanceController {
         return attendanceService.createSession(uid, req);
     }
 
-    // 2) teacher generuje QR dla sesji
     @GetMapping("/sessions/{sessionId}/qr")
     public QrResponse getQr(Authentication auth, @PathVariable Long sessionId) {
         String uid = (String) auth.getPrincipal();
 
-        User u = userRepository.findByFirebaseUid(uid)
-                .orElseThrow(() -> new IllegalStateException("Brak usera w bazie dla uid=" + uid));
+        User u = getOrCreateUser(uid);
 
         if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
             throw new IllegalArgumentException("Tylko TEACHER/ADMIN może generować QR");
@@ -52,18 +62,29 @@ public class AttendanceController {
         return attendanceService.generateQr(uid, sessionId);
     }
 
-    // 3) student robi check-in skanując QR (token z QR)
     @PostMapping("/check-in")
     public CheckInResponse checkIn(Authentication auth, @RequestBody CheckInRequest req) {
         String uid = (String) auth.getPrincipal();
 
-        User u = userRepository.findByFirebaseUid(uid)
-                .orElseThrow(() -> new IllegalStateException("Brak usera w bazie dla uid=" + uid));
+        User u = getOrCreateUser(uid);
 
         if (u.getRole() != Role.STUDENT) {
             throw new IllegalArgumentException("Tylko STUDENT może robić check-in");
         }
 
         return attendanceService.checkIn(uid, req);
+    }
+
+    @GetMapping("/sessions/{id}/records")
+    public List<CheckInResponse> getRecords(Authentication auth, @PathVariable Long id) {
+        String uid = (String) auth.getPrincipal();
+
+        User u = getOrCreateUser(uid);
+
+        if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
+            throw new IllegalArgumentException("Tylko TEACHER/ADMIN może przeglądać obecności");
+        }
+
+        return attendanceService.getRecordsForSession(uid, id);
     }
 }
