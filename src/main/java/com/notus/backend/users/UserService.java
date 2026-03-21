@@ -13,10 +13,13 @@ public class UserService {
     }
 
     @Transactional
+
     public UserDto findOrCreate(String clerkUserId, String email, String name) {
         Role targetRole = roleFromEmail(email);
 
         var user = repo.findByClerkUserId(clerkUserId).orElseGet(() -> {
+
+
             User u = new User();
             u.setClerkUserId(clerkUserId);
             u.setEmail(email);
@@ -33,6 +36,8 @@ public class UserService {
 
             return repo.save(u);
         });
+
+
 
 
         // ✅ jeśli user już istnieje, to (poza ADMIN) aktualizujemy rolę wg domeny
