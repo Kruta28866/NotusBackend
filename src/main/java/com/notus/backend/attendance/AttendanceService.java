@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.List;
 
 @Service
 public class AttendanceService {
@@ -84,5 +85,20 @@ public class AttendanceService {
         r = recordRepo.save(r);
 
         return new CheckInResponse(r.getSessionId(), r.getStudentUid(), r.getCheckedInAt());
+    }
+
+    @Transactional(readOnly = true)
+    public List<CheckInResponse> getRecordsForSession(String teacherUid, Long sessionId) {
+        sessionRepo.findByIdAndTeacherUid(sessionId, teacherUid)
+                .orElseThrow(() -> new IllegalArgumentException("Sesja nie istnieje lub nie jest Twoja"));
+
+        return recordRepo.findBySessionId(sessionId)
+                .stream()
+                .map(r -> new CheckInResponse(
+                        r.getSessionId(),
+                        r.getStudentUid(),
+                        r.getCheckedInAt()
+                ))
+                .toList();
     }
 }

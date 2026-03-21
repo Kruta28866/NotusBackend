@@ -1,5 +1,7 @@
 package com.notus.backend.users;
 
+
+
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -9,18 +11,17 @@ import lombok.Setter;
 @Getter
 @Table(name = "users",
         indexes = {
-                @Index(name = "idx_users_firebase_uid", columnList = "firebaseUid", unique = true),
+                @Index(name = "idx_users_clerk_user_id", columnList = "clerkUserId", unique = true),
                 @Index(name = "idx_users_email", columnList = "email", unique = true)
         })
 public class User {
 
-    // getters/setters (na razie ręcznie, później możesz dać Lomboka)
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false, unique = true)
-    private String firebaseUid;
+    private String clerkUserId;
 
     @Column(nullable = false, unique = true)
     private String email;
@@ -34,4 +35,6 @@ public class User {
 
     private String indexNumber;
 
+    @Column(name = "student_group")
+    private String studentGroup;
 }
