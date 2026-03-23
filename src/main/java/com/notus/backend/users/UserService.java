@@ -15,41 +15,47 @@ public class UserService {
     @Transactional
 
     public UserDto findOrCreate(String clerkUserId, String email, String name) {
-        Role targetRole = roleFromEmail(email);
+        // Prepare robust fallbacks for NOT NULL columns
+        String finalEmail = (email != null && !email.isBlank()) ? email : clerkUserId + "@no-email.clerk";
+        String finalName = (name != null && !name.isBlank()) ? name : "User_" + (clerkUserId.length() > 5 ? clerkUserId.substring(0, 5) : clerkUserId);
+        Role targetRole = roleFromEmail(finalEmail);
 
         var user = repo.findByClerkUserId(clerkUserId).orElseGet(() -> {
-
-
             User u = new User();
             u.setClerkUserId(clerkUserId);
-            u.setEmail(email);
-            u.setName((name == null || name.isBlank()) ? "User" : name);
-
-            // ✅ rola wg domeny
+            u.setEmail(finalEmail);
+            u.setName(finalName);
             u.setRole(targetRole);
 
-            // index tylko sensowny dla STUDENT (pjwstk)
-            if (targetRole == Role.STUDENT && email != null && email.contains("@")) {
-                String local = email.split("@")[0];
+            // index number from email if student
+            if (targetRole == Role.STUDENT && finalEmail.contains("@")) {
+                String local = finalEmail.split("@")[0];
                 if (!local.isBlank()) u.setIndexNumber(local);
             }
-
             return repo.save(u);
         });
 
+        boolean changed = false;
 
+        // Sync name if it changed
+        if (!finalName.equals(user.getName())) {
+            user.setName(finalName);
+            changed = true;
+        }
 
+        // Sync email if it changed (and was originally missing but now present)
+        if (email != null && !email.isBlank() && !email.equals(user.getEmail())) {
+            user.setEmail(email);
+            changed = true;
+        }
 
-        // ✅ jeśli user już istnieje, to (poza ADMIN) aktualizujemy rolę wg domeny
-        if (email != null && user.getRole() != Role.ADMIN && user.getRole() != targetRole) {
+        // Sync role if it changed (unless ADMIN)
+        if (user.getRole() != Role.ADMIN && user.getRole() != targetRole) {
             user.setRole(targetRole);
+            changed = true;
+        }
 
-            // index dla STUDENT
-            if (targetRole == Role.STUDENT && email.contains("@")) {
-                String local = email.split("@")[0];
-                user.setIndexNumber(local);
-            }
-
+        if (changed) {
             repo.save(user);
         }
 

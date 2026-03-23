@@ -10,11 +10,11 @@ import java.time.Instant;
 @Entity
 @Table(name = "attendance_record",
         uniqueConstraints = {
-                @UniqueConstraint(name = "uq_att_record_session_student", columnNames = {"sessionId", "studentUid"})
+                @UniqueConstraint(name = "uq_att_record_session_student", columnNames = {"session_id", "student_uid"})
         },
         indexes = {
-                @Index(name = "idx_att_record_session", columnList = "sessionId"),
-                @Index(name = "idx_att_record_student", columnList = "studentUid")
+                @Index(name = "idx_att_record_session", columnList = "session_id"),
+                @Index(name = "idx_att_record_student", columnList = "student_uid")
         })
 public class AttendanceRecord {
 
@@ -23,15 +23,15 @@ public class AttendanceRecord {
     private Long id;
 
     @Setter
-    @Column(nullable = false)
+    @Column(name = "session_id", nullable = false)
     private Long sessionId;
 
     @Setter
-    @Column(nullable = false)
+    @Column(name = "student_uid", nullable = false)
     private String studentUid;
 
     @Setter
-    @Column(nullable = false)
+    @Column(name = "checked_in_at", nullable = false)
     private Instant checkedInAt;
 
     @PrePersist

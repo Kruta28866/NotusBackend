@@ -10,7 +10,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "attendance_session",
         indexes = {
-                @Index(name = "idx_att_sess_teacher_uid", columnList = "teacherUid"),
+                @Index(name = "idx_att_sess_teacher_uid", columnList = "teacher_uid"),
                 @Index(name = "idx_att_sess_active", columnList = "active")
         })
 public class AttendanceSession {
@@ -20,7 +20,7 @@ public class AttendanceSession {
     private Long id;
 
     @Setter
-    @Column(nullable = false)
+    @Column(name = "teacher_uid", nullable = false)
     private String teacherUid;
 
     @Setter
@@ -28,14 +28,15 @@ public class AttendanceSession {
     private String title; // np. "Algorytmy - wykład 1"
 
     @Setter
-    @Column(nullable = false)
+    @Column(name = "created_at", nullable = false)
     private Instant createdAt;
 
     @Setter
     @Column(nullable = false)
     private boolean active;
 
-    // opcjonalnie: kiedy kończy się zajęcie
+    // opcjonalnie: kiedy kończy się zajęcia
+    @Column(name = "ends_at")
     private Instant endsAt;
 
     @PrePersist
