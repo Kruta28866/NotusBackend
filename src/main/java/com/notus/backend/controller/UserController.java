@@ -2,6 +2,7 @@ package com.notus.backend.controller;
 
 import com.notus.backend.users.UserDto;
 import com.notus.backend.users.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -16,8 +17,10 @@ public class UserController {
     }
 
     @GetMapping("/api/me")
-    public UserDto me(Authentication authentication) {
+    public UserDto me(Authentication authentication, HttpServletRequest request) {
         String uid = (String) authentication.getPrincipal();
-        return userService.findOrCreate(uid, null, null);
+        String email = (String) request.getAttribute("clerk_email");
+
+        return userService.findOrCreate(uid, email, "User");
     }
 }

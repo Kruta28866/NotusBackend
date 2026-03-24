@@ -5,6 +5,8 @@ import com.notus.backend.attendance.dto.*;
 import com.notus.backend.users.Role;
 import com.notus.backend.users.User;
 import com.notus.backend.users.UserRepository;
+import com.notus.backend.users.UserService;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
@@ -17,30 +19,33 @@ public class AttendanceController {
 
     private final AttendanceService attendanceService;
     private final UserRepository userRepository;
+    private final UserService userService;
 
-    public AttendanceController(AttendanceService attendanceService, UserRepository userRepository) {
+    public AttendanceController(AttendanceService attendanceService,
+                                UserRepository userRepository,
+                                UserService userService) {
         this.attendanceService = attendanceService;
         this.userRepository = userRepository;
+        this.userService = userService;
     }
 
-    private User getOrCreateUser(String uid) {
+    private User resolveUser(Authentication auth, HttpServletRequest request) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+
+        userService.findOrCreate(uid, email, "User");
+
         return userRepository.findByClerkUserId(uid)
-                .orElseGet(() -> {
-                    User nu = new User();
-                    nu.setClerkUserId(uid);
-                    nu.setName("Nowy użytkownik");
-                    nu.setEmail(uid + "@placeholder.local");
-                    nu.setRole(Role.TEACHER); // tymczasowo
-                    return userRepository.save(nu);
-                });
+                .orElseThrow(() -> new IllegalArgumentException("Użytkownik nie istnieje"));
     }
 
     @PostMapping("/sessions")
     @ResponseStatus(HttpStatus.CREATED)
-    public CreateSessionResponse createSession(Authentication auth, @RequestBody CreateSessionRequest req) {
+    public CreateSessionResponse createSession(Authentication auth,
+                                               HttpServletRequest request,
+                                               @RequestBody CreateSessionRequest req) {
         String uid = (String) auth.getPrincipal();
-
-        User u = getOrCreateUser(uid);
+        User u = resolveUser(auth, request);
 
         if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
             throw new IllegalArgumentException("Tylko TEACHER/ADMIN może tworzyć sesje");
@@ -50,10 +55,11 @@ public class AttendanceController {
     }
 
     @GetMapping("/sessions/{sessionId}/qr")
-    public QrResponse getQr(Authentication auth, @PathVariable Long sessionId) {
+    public QrResponse getQr(Authentication auth,
+                            HttpServletRequest request,
+                            @PathVariable Long sessionId) {
         String uid = (String) auth.getPrincipal();
-
-        User u = getOrCreateUser(uid);
+        User u = resolveUser(auth, request);
 
         if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
             throw new IllegalArgumentException("Tylko TEACHER/ADMIN może generować QR");
@@ -63,10 +69,11 @@ public class AttendanceController {
     }
 
     @PostMapping("/check-in")
-    public CheckInResponse checkIn(Authentication auth, @RequestBody CheckInRequest req) {
+    public CheckInResponse checkIn(Authentication auth,
+                                   HttpServletRequest request,
+                                   @RequestBody CheckInRequest req) {
         String uid = (String) auth.getPrincipal();
-
-        User u = getOrCreateUser(uid);
+        User u = resolveUser(auth, request);
 
         if (u.getRole() != Role.STUDENT) {
             throw new IllegalArgumentException("Tylko STUDENT może robić check-in");
@@ -76,10 +83,11 @@ public class AttendanceController {
     }
 
     @GetMapping("/sessions/{id}/records")
-    public List<CheckInResponse> getRecords(Authentication auth, @PathVariable Long id) {
+    public List<CheckInResponse> getRecords(Authentication auth,
+                                            HttpServletRequest request,
+                                            @PathVariable Long id) {
         String uid = (String) auth.getPrincipal();
-
-        User u = getOrCreateUser(uid);
+        User u = resolveUser(auth, request);
 
         if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
             throw new IllegalArgumentException("Tylko TEACHER/ADMIN może przeglądać obecności");
