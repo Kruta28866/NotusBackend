@@ -1,6 +1,7 @@
 package com.notus.backend.attendance;
 
 import com.notus.backend.attendance.dto.*;
+import com.notus.backend.users.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,17 +15,20 @@ public class AttendanceService {
     private final AttendanceRecordRepository recordRepo;
     private final QrTokenService qrTokenService;
     private final QrImageService qrImageService;
+    private final UserRepository userRepo;
 
     public AttendanceService(
             AttendanceSessionRepository sessionRepo,
             AttendanceRecordRepository recordRepo,
             QrTokenService qrTokenService,
-            QrImageService qrImageService
+            QrImageService qrImageService,
+            UserRepository userRepo
     ) {
         this.sessionRepo = sessionRepo;
         this.recordRepo = recordRepo;
         this.qrTokenService = qrTokenService;
         this.qrImageService = qrImageService;
+        this.userRepo = userRepo;
     }
 
     @Transactional
@@ -84,7 +88,11 @@ public class AttendanceService {
         r.setCheckedInAt(Instant.now());
         r = recordRepo.save(r);
 
-        return new CheckInResponse(r.getSessionId(), r.getStudentUid(), r.getCheckedInAt());
+        var user = userRepo.findByClerkUserId(studentUid).orElse(null);
+        String name = user != null ? user.getName() : studentUid;
+        String index = user != null ? user.getIndexNumber() : null;
+
+        return new CheckInResponse(r.getSessionId(), r.getStudentUid(), name, index, r.getCheckedInAt());
     }
 
     @Transactional(readOnly = true)
@@ -94,11 +102,18 @@ public class AttendanceService {
 
         return recordRepo.findBySessionId(sessionId)
                 .stream()
-                .map(r -> new CheckInResponse(
-                        r.getSessionId(),
-                        r.getStudentUid(),
-                        r.getCheckedInAt()
-                ))
+                .map(r -> {
+                    var user = userRepo.findByClerkUserId(r.getStudentUid()).orElse(null);
+                    String name = user != null ? user.getName() : r.getStudentUid();
+                    String index = user != null ? user.getIndexNumber() : null;
+                    return new CheckInResponse(
+                            r.getSessionId(),
+                            r.getStudentUid(),
+                            name,
+                            index,
+                            r.getCheckedInAt()
+                    );
+                })
                 .toList();
     }
 }
