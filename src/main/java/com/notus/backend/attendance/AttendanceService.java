@@ -9,6 +9,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
 
@@ -204,12 +205,14 @@ public class AttendanceService {
                 .toList();
     }
 
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+
     private String generateShortCode() {
         String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         StringBuilder code = new StringBuilder();
 
         for (int i = 0; i < 6; i++) {
-            code.append(chars.charAt((int) (Math.random() * chars.length())));
+            code.append(chars.charAt(SECURE_RANDOM.nextInt(chars.length())));
         }
 
         return code.toString();

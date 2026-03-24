@@ -4,6 +4,8 @@ import com.notus.backend.quiz.dto.QuestionDto;
 import com.notus.backend.quiz.dto.QuizResponse;
 import com.notus.backend.users.Teacher;
 import com.notus.backend.users.TeacherRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
@@ -14,6 +16,8 @@ import java.util.Optional;
 
 @Component
 public class QuizDataSeeder implements CommandLineRunner {
+
+    private static final Logger log = LoggerFactory.getLogger(QuizDataSeeder.class);
 
     private final QuizService quizService;
     private final TeacherRepository teacherRepository;
@@ -29,15 +33,14 @@ public class QuizDataSeeder implements CommandLineRunner {
 
         Optional<Teacher> teacherOpt = teacherRepository.findByClerkUserId(clerkUserId);
         if (teacherOpt.isEmpty()) {
-            System.out.println("DEBUG SEEDER: Teacher " + clerkUserId + " not found in DB. Skipping quiz seeding.");
+            log.info("Seeder: teacher {} not found in DB, skipping quiz seeding", clerkUserId);
             return;
         }
 
         Teacher teacher = teacherOpt.get();
         List<Quiz> existing = quizService.getTeacherQuizzes(clerkUserId);
-        System.out.println("DEBUG SEEDER: Quizzes for " + clerkUserId + " found: " + existing.size());
         if (existing.isEmpty()) {
-            System.out.println("Seeding quiz data for teacher Kamu...");
+            log.info("Seeding sample quiz data for teacher {}", clerkUserId);
 
             QuizResponse quiz = new QuizResponse();
             quiz.setTitle("Kolokwium: Bezpieczeństwo Sieci");
@@ -75,7 +78,7 @@ public class QuizDataSeeder implements CommandLineRunner {
             quiz.setQuestions(questions);
 
             quizService.saveQuiz(clerkUserId, quiz);
-            System.out.println("Quiz data seeded successfully!");
+            log.info("Quiz data seeded successfully");
         }
     }
 }

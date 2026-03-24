@@ -6,6 +6,8 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -20,6 +22,8 @@ import java.util.List;
 @Component
 public class ClerkAuthFilter extends OncePerRequestFilter {
 
+    private static final Logger log = LoggerFactory.getLogger(ClerkAuthFilter.class);
+
     private static final List<String> ALLOWED_DOMAINS =
             List.of("@pjwstk.edu.pl", "@gmail.com");
 
@@ -29,8 +33,6 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
                                     FilterChain chain)
             throws ServletException, IOException {
         
-        System.out.println("DEBUG AUTH: Processing request to: " + request.getRequestURI() + " [" + request.getMethod() + "]");
-
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             chain.doFilter(request, response);
             return;
@@ -39,14 +41,11 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
 
         if (header == null || !header.startsWith("Bearer ")) {
-            System.out.println("BRAK LUB ZŁY AUTH HEADER dla: " + request.getRequestURI());
             chain.doFilter(request, response);
             return;
         }
 
         String token = header.substring(7).trim();
-        System.out.println("AUTH HEADER: " + header);
-        System.out.println("TOKEN START: " + token.substring(0, Math.min(30, token.length())));
 
         try {
             DecodedJWT jwt = JWT.decode(token);
@@ -60,12 +59,8 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
                 if (!emailClaim.isMissing()) email = emailClaim.asString();
             }
 
-            System.out.println("REQUEST URI: " + request.getRequestURI());
-            System.out.println("SUBJECT: " + userId);
-            System.out.println("CLAIMS: " + jwt.getClaims().keySet());
-
             if (userId == null || userId.isBlank()) {
-                System.out.println("DEBUG AUTH: No userId in token subject!");
+                log.warn("No userId in token subject for request: {}", request.getRequestURI());
                 response.setStatus(HttpStatus.UNAUTHORIZED.value());
                 response.getWriter().write("Brak userId w tokenie");
                 return;
@@ -97,8 +92,7 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
             chain.doFilter(request, response);
 
         } catch (Exception e) {
-            System.out.println("BŁĄD W ClerkAuthFilter:");
-            e.printStackTrace();
+            log.error("Error processing auth token", e);
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             response.getWriter().write("Niepoprawny token Clerk");
         }
