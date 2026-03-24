@@ -3,8 +3,8 @@ package com.notus.backend.controller;
 import com.notus.backend.attendance.AttendanceService;
 import com.notus.backend.attendance.dto.*;
 import com.notus.backend.users.Role;
-import com.notus.backend.users.User;
-import com.notus.backend.users.UserRepository;
+import com.notus.backend.users.Role;
+import com.notus.backend.users.UserDto;
 import com.notus.backend.users.UserService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpStatus;
@@ -18,25 +18,20 @@ import java.util.List;
 public class AttendanceController {
 
     private final AttendanceService attendanceService;
-    private final UserRepository userRepository;
     private final UserService userService;
 
     public AttendanceController(AttendanceService attendanceService,
-                                UserRepository userRepository,
                                 UserService userService) {
         this.attendanceService = attendanceService;
-        this.userRepository = userRepository;
         this.userService = userService;
     }
 
-    private User resolveUser(Authentication auth, HttpServletRequest request) {
+    private UserDto resolveUser(Authentication auth, HttpServletRequest request) {
         String uid = (String) auth.getPrincipal();
         String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
 
-        userService.findOrCreate(uid, email, "User");
-
-        return userRepository.findByClerkUserId(uid)
-                .orElseThrow(() -> new IllegalArgumentException("Użytkownik nie istnieje"));
+        return userService.findOrCreate(uid, email, name);
     }
 
     @PostMapping("/sessions")
@@ -45,9 +40,9 @@ public class AttendanceController {
                                                HttpServletRequest request,
                                                @RequestBody CreateSessionRequest req) {
         String uid = (String) auth.getPrincipal();
-        User u = resolveUser(auth, request);
+        UserDto u = resolveUser(auth, request);
 
-        if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
+        if (u.role() != Role.TEACHER && u.role() != Role.ADMIN) {
             throw new IllegalArgumentException("Tylko TEACHER/ADMIN może tworzyć sesje");
         }
 
@@ -59,9 +54,9 @@ public class AttendanceController {
                             HttpServletRequest request,
                             @PathVariable Long sessionId) {
         String uid = (String) auth.getPrincipal();
-        User u = resolveUser(auth, request);
+        UserDto u = resolveUser(auth, request);
 
-        if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
+        if (u.role() != Role.TEACHER && u.role() != Role.ADMIN) {
             throw new IllegalArgumentException("Tylko TEACHER/ADMIN może generować QR");
         }
 
@@ -73,9 +68,9 @@ public class AttendanceController {
                                    HttpServletRequest request,
                                    @RequestBody CheckInRequest req) {
         String uid = (String) auth.getPrincipal();
-        User u = resolveUser(auth, request);
+        UserDto u = resolveUser(auth, request);
 
-        if (u.getRole() != Role.STUDENT) {
+        if (u.role() != Role.STUDENT) {
             throw new IllegalArgumentException("Tylko STUDENT może robić check-in");
         }
 
@@ -87,9 +82,9 @@ public class AttendanceController {
                                             HttpServletRequest request,
                                             @PathVariable Long id) {
         String uid = (String) auth.getPrincipal();
-        User u = resolveUser(auth, request);
+        UserDto u = resolveUser(auth, request);
 
-        if (u.getRole() != Role.TEACHER && u.getRole() != Role.ADMIN) {
+        if (u.role() != Role.TEACHER && u.role() != Role.ADMIN) {
             throw new IllegalArgumentException("Tylko TEACHER/ADMIN może przeglądać obecności");
         }
 

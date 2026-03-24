@@ -1,7 +1,9 @@
 package com.notus.backend.attendance;
 
 import com.notus.backend.attendance.dto.*;
-import com.notus.backend.users.UserRepository;
+import com.notus.backend.users.Student;
+import com.notus.backend.users.StudentRepository;
+import com.notus.backend.users.TeacherRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,20 +19,23 @@ public class AttendanceService {
     private final AttendanceRecordRepository recordRepo;
     private final QrTokenService qrTokenService;
     private final QrImageService qrImageService;
-    private final UserRepository userRepo;
+    private final StudentRepository studentRepo;
+    private final TeacherRepository teacherRepo;
 
     public AttendanceService(
             AttendanceSessionRepository sessionRepo,
             AttendanceRecordRepository recordRepo,
             QrTokenService qrTokenService,
             QrImageService qrImageService,
-            UserRepository userRepo
+            StudentRepository studentRepo,
+            TeacherRepository teacherRepo
     ) {
         this.sessionRepo = sessionRepo;
         this.recordRepo = recordRepo;
         this.qrTokenService = qrTokenService;
         this.qrImageService = qrImageService;
-        this.userRepo = userRepo;
+        this.studentRepo = studentRepo;
+        this.teacherRepo = teacherRepo;
     }
 
     @Transactional
@@ -39,8 +44,12 @@ public class AttendanceService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak tytułu sesji");
         }
 
+        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() -> 
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
+        );
+
         AttendanceSession s = new AttendanceSession();
-        s.setTeacherUid(teacherUid);
+        s.setTeacher(teacher);
         s.setTitle(req.title().trim());
         s.setShortCode(generateShortCode());
         s.setActive(true);
@@ -57,7 +66,11 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public QrResponse generateQr(String teacherUid, Long sessionId) {
-        AttendanceSession s = sessionRepo.findByIdAndTeacherUid(sessionId, teacherUid)
+        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() -> 
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
+        );
+
+        AttendanceSession s = sessionRepo.findByIdAndTeacher(sessionId, teacher)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Sesja nie istnieje lub nie jest Twoja"
@@ -65,6 +78,10 @@ public class AttendanceService {
 
         if (!s.isActive()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sesja nieaktywna");
+        }
+        if (s.getShortCode() == null || s.getShortCode().isBlank()) {
+            s.setShortCode(generateShortCode());
+            s = sessionRepo.save(s);
         }
 
         String qrToken = qrTokenService.createToken(s.getId());
@@ -113,18 +130,20 @@ public class AttendanceService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sesja nieaktywna");
         }
 
-        var user = userRepo.findByClerkUserId(studentUid).orElse(null);
-        String name = user != null ? user.getName() : studentUid;
-        String index = user != null ? user.getIndexNumber() : null;
+        var student = studentRepo.findByClerkUserId(studentUid).orElseThrow(() -> 
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Student nie znaleziony")
+        );
+        String name = student.getName();
+        String index = student.getIndexNumber();
 
-        var existing = recordRepo.findBySessionIdAndStudentUid(s.getId(), studentUid);
+        var existing = recordRepo.findBySessionIdAndStudent(s.getId(), student);
         if (existing.isPresent()) {
             AttendanceRecord existingRecord = existing.get();
 
             return new CheckInResponse(
                     existingRecord.getSessionId(),
                     s.getTitle(),
-                    existingRecord.getStudentUid(),
+                    studentUid,
                     name,
                     index,
                     existingRecord.getCheckedInAt(),
@@ -135,14 +154,14 @@ public class AttendanceService {
 
         AttendanceRecord r = new AttendanceRecord();
         r.setSessionId(s.getId());
-        r.setStudentUid(studentUid);
+        r.setStudent(student);
         r.setCheckedInAt(Instant.now());
         r = recordRepo.save(r);
 
         return new CheckInResponse(
                 r.getSessionId(),
                 s.getTitle(),
-                r.getStudentUid(),
+                studentUid,
                 name,
                 index,
                 r.getCheckedInAt(),
@@ -153,7 +172,11 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public List<CheckInResponse> getRecordsForSession(String teacherUid, Long sessionId) {
-        AttendanceSession session = sessionRepo.findByIdAndTeacherUid(sessionId, teacherUid)
+        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() -> 
+            new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
+        );
+
+        AttendanceSession session = sessionRepo.findByIdAndTeacher(sessionId, teacher)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND,
                         "Sesja nie istnieje lub nie jest Twoja"
@@ -162,14 +185,15 @@ public class AttendanceService {
         return recordRepo.findBySessionId(sessionId)
                 .stream()
                 .map(r -> {
-                    var user = userRepo.findByClerkUserId(r.getStudentUid()).orElse(null);
-                    String name = user != null ? user.getName() : r.getStudentUid();
-                    String index = user != null ? user.getIndexNumber() : null;
+                    Student student = r.getStudent();
+                    String name = student != null ? student.getName() : "Unknown";
+                    String index = student != null ? student.getIndexNumber() : null;
+                    String uid = student != null ? student.getClerkUserId() : null;
 
                     return new CheckInResponse(
                             r.getSessionId(),
                             session.getTitle(),
-                            r.getStudentUid(),
+                            uid,
                             name,
                             index,
                             r.getCheckedInAt(),

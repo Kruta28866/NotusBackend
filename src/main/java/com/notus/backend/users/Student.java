@@ -1,20 +1,20 @@
 package com.notus.backend.users;
 
-
-
 import jakarta.persistence.*;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 @Entity
-@Setter
-@Getter
-@Table(name = "users",
+@Table(name = "students",
         indexes = {
-                @Index(name = "idx_users_clerk_user_id", columnList = "clerk_user_id", unique = true),
-                @Index(name = "idx_users_email", columnList = "email", unique = true)
+                @Index(name = "idx_students_clerk_user_id", columnList = "clerk_user_id", unique = true),
+                @Index(name = "idx_students_email", columnList = "email", unique = true)
         })
-public class User {
+@Getter
+@Setter
+@NoArgsConstructor
+public class Student {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -31,7 +31,7 @@ public class User {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private Role role;
+    private Role role = Role.STUDENT;
 
     @Column(name = "index_number")
     private String indexNumber;

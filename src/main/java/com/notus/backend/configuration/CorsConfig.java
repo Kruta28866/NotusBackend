@@ -1,4 +1,4 @@
-package com.notus.backend;
+package com.notus.backend.configuration;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -15,16 +15,16 @@ public class CorsConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration cfg = new CorsConfiguration();
 
-        // Adres frontendu uruchomionego przez Vite
-        cfg.setAllowedOrigins(List.of("http://localhost:5173"));
+        // Pozwól na dowolny localhost dla łatwiejszego dev
+        cfg.setAllowedOriginPatterns(List.of("http://localhost:*", "http://127.0.0.1:*"));
 
         // Metody, na które pozwalamy
         cfg.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
 
-        // Nagłówki (później będzie tu Authorization)
+        // Nagłówki
         cfg.setAllowedHeaders(List.of("*"));
 
-        // Pozwala na cookies/credentials (nie przeszkadza teraz, bywa potrzebne później)
+        // Pozwala na cookies/credentials
         cfg.setAllowCredentials(true);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

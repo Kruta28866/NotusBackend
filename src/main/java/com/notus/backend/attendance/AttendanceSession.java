@@ -1,5 +1,6 @@
 package com.notus.backend.attendance;
 
+import com.notus.backend.users.Teacher;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -10,7 +11,7 @@ import java.time.Instant;
 @Entity
 @Table(name = "attendance_session",
         indexes = {
-                @Index(name = "idx_att_sess_teacher_uid", columnList = "teacher_uid"),
+                @Index(name = "idx_att_sess_teacher_id", columnList = "teacher_id"),
                 @Index(name = "idx_att_sess_active", columnList = "active")
         })
 public class AttendanceSession {
@@ -20,8 +21,9 @@ public class AttendanceSession {
     private Long id;
 
     @Setter
-    @Column(name = "teacher_uid", nullable = false)
-    private String teacherUid;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "teacher_id", nullable = false)
+    private Teacher teacher;
 
     @Setter
     @Column(nullable = false)

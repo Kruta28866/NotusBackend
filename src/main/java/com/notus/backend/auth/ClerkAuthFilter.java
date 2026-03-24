@@ -13,10 +13,11 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 import com.notus.backend.users.Role;
-import com.notus.backend.users.RoleResolver;
+import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.util.List;
 
+@Component
 public class ClerkAuthFilter extends OncePerRequestFilter {
 
     private static final List<String> ALLOWED_DOMAINS =
@@ -27,6 +28,8 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain chain)
             throws ServletException, IOException {
+        
+        System.out.println("DEBUG AUTH: Processing request to: " + request.getRequestURI() + " [" + request.getMethod() + "]");
 
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
             chain.doFilter(request, response);
@@ -47,26 +50,46 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
 
         try {
             DecodedJWT jwt = JWT.decode(token);
-
             String userId = jwt.getSubject();
+
+            // Try to extract email from common Clerk claims
+            String email = jwt.getClaim("email").asString();
+            if (email == null) {
+                // Some Clerk tokens might have it in other claims depending on JWT template
+                var emailClaim = jwt.getClaim("email_address");
+                if (!emailClaim.isMissing()) email = emailClaim.asString();
+            }
 
             System.out.println("REQUEST URI: " + request.getRequestURI());
             System.out.println("SUBJECT: " + userId);
             System.out.println("CLAIMS: " + jwt.getClaims().keySet());
 
             if (userId == null || userId.isBlank()) {
+                System.out.println("DEBUG AUTH: No userId in token subject!");
                 response.setStatus(HttpStatus.UNAUTHORIZED.value());
                 response.getWriter().write("Brak userId w tokenie");
                 return;
             }
 
-// 🔥 NIE SPRAWDZAMY EMAIL
-            Role role = Role.STUDENT;
+            // Try to extract name/username from common Clerk claims
+            String name = jwt.getClaim("name").asString();
+            if (name == null) {
+                name = jwt.getClaim("username").asString();
+            }
 
+            // Set attributes as request attribute for controllers to use
+            if (email != null) {
+                request.setAttribute("clerk_email", email);
+            }
+            if (name != null) {
+                request.setAttribute("clerk_name", name);
+            }
+
+            // We use a generic ROLE_USER here; the controller will perform detailed role checks via UserService
             var auth = new UsernamePasswordAuthenticationToken(
                     userId,
                     null,
-                    List.of(new SimpleGrantedAuthority("ROLE_" + role.name()))
+                    List.of(new SimpleGrantedAuthority("ROLE_USER"))
             );
 
             SecurityContextHolder.getContext().setAuthentication(auth);
