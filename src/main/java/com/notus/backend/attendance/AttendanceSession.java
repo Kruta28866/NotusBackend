@@ -25,7 +25,11 @@ public class AttendanceSession {
 
     @Setter
     @Column(nullable = false)
-    private String title; // np. "Algorytmy - wykład 1"
+    private String title;
+
+    @Setter
+    @Column(name = "short_code", unique = true, length = 8)
+    private String shortCode;
 
     @Setter
     @Column(name = "created_at", nullable = false)

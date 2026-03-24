@@ -5,5 +5,6 @@ import java.util.Optional;
 
 public interface AttendanceSessionRepository extends JpaRepository<AttendanceSession, Long> {
     Optional<AttendanceSession> findByIdAndTeacherUid(Long id, String teacherUid);
+    Optional<AttendanceSession> findByShortCode(String shortCode);
 }
 

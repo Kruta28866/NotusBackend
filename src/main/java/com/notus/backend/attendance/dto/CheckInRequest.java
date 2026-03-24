@@ -1,3 +1,3 @@
 package com.notus.backend.attendance.dto;
 
-public record CheckInRequest(String qrToken) {}
+public record CheckInRequest(String qrToken, String shortCode) {}

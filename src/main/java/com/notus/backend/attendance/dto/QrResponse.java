@@ -4,5 +4,6 @@ public record QrResponse(
         Long sessionId,
         String qrToken,
         String qrPngBase64,
-        long expiresAtEpochSeconds
+        long expiresAtEpochSeconds,
+        String shortCode
 ) {}
