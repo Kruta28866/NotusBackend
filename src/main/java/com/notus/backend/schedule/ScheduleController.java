@@ -13,8 +13,11 @@ public class ScheduleController {
     private final ScheduleService scheduleService;
 
     @GetMapping("/today")
-    public List<Schedule> getTodaySchedule(@RequestParam String teacherName) {
-        return scheduleService.getTodayScheduleForTeacher(teacherName);
+    public List<Schedule> getTodaySchedule(
+            @RequestParam(required = false) Long teacherId,
+            @RequestParam(required = false) String teacherName
+    ) {
+        return scheduleService.getTodayScheduleForTeacher(teacherId, teacherName);
     }
 
     @GetMapping("/by-day")
@@ -26,8 +29,9 @@ public class ScheduleController {
     public List<Schedule> getSchedule(
             @RequestParam String start,
             @RequestParam String end,
+            @RequestParam(required = false) Long teacherId,
             @RequestParam(required = false) String teacherName
     ) {
-        return scheduleService.getSchedule(Instant.parse(start), Instant.parse(end), teacherName);
+        return scheduleService.getSchedule(Instant.parse(start), Instant.parse(end), teacherId, teacherName);
     }
 }

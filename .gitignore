@@ -10,6 +10,8 @@ backend_log.txt
 backend_startup.log
 build_debug.log
 build_log.txt
+terminal_output.txt
+startup.log
 
 ### STS ###
 .apt_generated

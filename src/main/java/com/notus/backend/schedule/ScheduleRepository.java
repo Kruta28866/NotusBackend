@@ -7,6 +7,7 @@ import java.util.List;
 
 @Repository
 public interface ScheduleRepository extends JpaRepository<Schedule, String> {
-    List<Schedule> findByDateBetweenAndTeacherContainingIgnoreCase(Instant start, Instant end, String teacher);
+    List<Schedule> findByDateBetweenAndTeacherEntityNameContainingIgnoreCase(Instant start, Instant end, String teacherName);
+    List<Schedule> findByDateBetweenAndTeacherEntityId(Instant start, Instant end, Long teacherId);
     List<Schedule> findByDateBetween(Instant start, Instant end);
 }

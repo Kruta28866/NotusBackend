@@ -12,11 +12,18 @@ import java.util.List;
 public class ScheduleService {
     private final ScheduleRepository scheduleRepository;
 
-    public List<Schedule> getTodayScheduleForTeacher(String teacherName) {
+    public List<Schedule> getTodayScheduleForTeacher(Long teacherId, String teacherName) {
         LocalDate today = LocalDate.now();
         Instant start = today.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant end = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
-        return scheduleRepository.findByDateBetweenAndTeacherContainingIgnoreCase(start, end, teacherName);
+        if (teacherId != null) {
+            List<Schedule> byId = scheduleRepository.findByDateBetweenAndTeacherEntityId(start, end, teacherId);
+            if (!byId.isEmpty()) return byId;
+        }
+        if (teacherName != null && !teacherName.isBlank()) {
+            return scheduleRepository.findByDateBetweenAndTeacherEntityNameContainingIgnoreCase(start, end, teacherName);
+        }
+        return List.of();
     }
 
     public List<Schedule> getScheduleByDay(LocalDate date) {
@@ -25,9 +32,13 @@ public class ScheduleService {
         return scheduleRepository.findByDateBetween(start, end);
     }
 
-    public List<Schedule> getSchedule(Instant start, Instant end, String teacherName) {
+    public List<Schedule> getSchedule(Instant start, Instant end, Long teacherId, String teacherName) {
+        if (teacherId != null) {
+            List<Schedule> byId = scheduleRepository.findByDateBetweenAndTeacherEntityId(start, end, teacherId);
+            if (!byId.isEmpty()) return byId;
+        }
         if (teacherName != null && !teacherName.isBlank()) {
-            return scheduleRepository.findByDateBetweenAndTeacherContainingIgnoreCase(start, end, teacherName);
+            return scheduleRepository.findByDateBetweenAndTeacherEntityNameContainingIgnoreCase(start, end, teacherName);
         }
         return scheduleRepository.findByDateBetween(start, end);
     }

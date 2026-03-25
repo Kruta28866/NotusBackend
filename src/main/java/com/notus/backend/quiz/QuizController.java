@@ -1,10 +1,22 @@
 package com.notus.backend.quiz;
 
 import com.notus.backend.quiz.dto.QuizResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
 import java.security.Principal;
 import java.util.List;
 
@@ -12,6 +24,8 @@ import java.util.List;
 @RequestMapping("/api/quiz")
 @CrossOrigin(origins = "*")
 public class QuizController {
+
+    private static final Logger log = LoggerFactory.getLogger(QuizController.class);
 
     private final PdfQuizService pdfQuizService;
     private final QuizService quizService;
@@ -36,7 +50,7 @@ public class QuizController {
     public List<Quiz> getMyQuizzes(Principal principal) {
         String uid = principal.getName();
         List<Quiz> quizzes = quizService.getTeacherQuizzes(uid);
-        System.out.println("DEBUG: Fetching quizzes for UID: [" + uid + "], result size: " + (quizzes != null ? quizzes.size() : "null"));
+        log.debug("Fetching quizzes for UID: [{}], result size: {}", uid, quizzes != null ? quizzes.size() : "null");
         return quizzes;
     }
 
@@ -50,5 +64,117 @@ public class QuizController {
     public void deleteQuiz(Principal principal, @PathVariable Long id) {
         String uid = principal.getName();
         quizService.deleteQuiz(uid, id);
+    }
+
+    @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
+    public ResponseEntity<byte[]> downloadQuizPdf(Principal principal, @PathVariable Long id) throws IOException {
+        String uid = principal.getName();
+        Quiz quiz = quizService.getQuizDetails(uid, id);
+
+        byte[] pdfBytes = generateQuizPdf(quiz);
+
+        String filename = "quiz-" + id + ".pdf";
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                .body(pdfBytes);
+    }
+
+    private byte[] generateQuizPdf(Quiz quiz) throws IOException {
+        try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            PDType1Font fontBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+            PDType1Font fontRegular = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+
+            float margin = 50;
+            float pageWidth = PDRectangle.A4.getWidth();
+            float usableWidth = pageWidth - 2 * margin;
+            float yStart = PDRectangle.A4.getHeight() - margin;
+            float lineHeight = 16;
+            float y = yStart;
+
+            PDPage page = new PDPage(PDRectangle.A4);
+            doc.addPage(page);
+            PDPageContentStream cs = new PDPageContentStream(doc, page);
+
+            // Title
+            cs.beginText();
+            cs.setFont(fontBold, 18);
+            cs.newLineAtOffset(margin, y);
+            cs.showText(sanitize(quiz.getTitle()));
+            cs.endText();
+            y -= lineHeight * 2;
+
+            if (quiz.getDescription() != null && !quiz.getDescription().isBlank()) {
+                cs.beginText();
+                cs.setFont(fontRegular, 11);
+                cs.newLineAtOffset(margin, y);
+                cs.showText(sanitize(quiz.getDescription()));
+                cs.endText();
+                y -= lineHeight * 1.5f;
+            }
+
+            List<QuizQuestion> questions = quiz.getQuestions();
+            for (int i = 0; i < questions.size(); i++) {
+                QuizQuestion q = questions.get(i);
+
+                if (y < margin + lineHeight * 6) {
+                    cs.close();
+                    page = new PDPage(PDRectangle.A4);
+                    doc.addPage(page);
+                    cs = new PDPageContentStream(doc, page);
+                    y = yStart;
+                }
+
+                // Question text
+                cs.beginText();
+                cs.setFont(fontBold, 12);
+                cs.newLineAtOffset(margin, y);
+                cs.showText((i + 1) + ". " + sanitize(q.getQuestionText()));
+                cs.endText();
+                y -= lineHeight;
+
+                // Options (for CLOSED type)
+                if (q.getOptions() != null && !q.getOptions().isEmpty()) {
+                    String[] letters = {"A", "B", "C", "D", "E"};
+                    for (int j = 0; j < q.getOptions().size(); j++) {
+                        if (y < margin + lineHeight * 3) {
+                            cs.close();
+                            page = new PDPage(PDRectangle.A4);
+                            doc.addPage(page);
+                            cs = new PDPageContentStream(doc, page);
+                            y = yStart;
+                        }
+                        String letter = j < letters.length ? letters[j] : String.valueOf((char)('A' + j));
+                        cs.beginText();
+                        cs.setFont(fontRegular, 11);
+                        cs.newLineAtOffset(margin + 16, y);
+                        cs.showText(letter + ") " + sanitize(q.getOptions().get(j)));
+                        cs.endText();
+                        y -= lineHeight;
+                    }
+                }
+
+                // Correct answer
+                if (q.getCorrectAnswer() != null && !q.getCorrectAnswer().isBlank()) {
+                    cs.beginText();
+                    cs.setFont(fontBold, 10);
+                    cs.newLineAtOffset(margin + 16, y);
+                    cs.showText("Odpowiedz: " + sanitize(q.getCorrectAnswer()));
+                    cs.endText();
+                    y -= lineHeight;
+                }
+
+                y -= lineHeight * 0.5f;
+            }
+
+            cs.close();
+            doc.save(out);
+            return out.toByteArray();
+        }
+    }
+
+    private String sanitize(String text) {
+        if (text == null) return "";
+        return text.replaceAll("[\\x00-\\x1F\\x7F]", "")
+                   .replaceAll("[^\\x00-\\xFF]", "?");
     }
 }

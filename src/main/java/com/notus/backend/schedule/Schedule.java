@@ -1,5 +1,7 @@
 package com.notus.backend.schedule;
 
+import com.notus.backend.users.Teacher;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.persistence.*;
 import lombok.*;
 import java.time.Instant;
@@ -18,7 +20,15 @@ public class Schedule {
     private Instant date;
     private String time;
     private String subject;
-    private String teacher;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "teacher_id")
+    private com.notus.backend.users.Teacher teacherEntity;
+
+    @Transient
+    public String getTeacher() {
+        return teacherEntity != null ? teacherEntity.getName() : null;
+    }
+
     private String type;
     private String room;
     private String color;
