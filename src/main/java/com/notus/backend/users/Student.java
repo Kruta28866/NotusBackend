@@ -1,9 +1,12 @@
 package com.notus.backend.users;
 
+import com.notus.backend.attendance.group.StudentGroup;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+
+import java.util.List;
 
 @Entity
 @Table(name = "students",
@@ -36,6 +39,13 @@ public class Student {
     @Column(name = "index_number")
     private String indexNumber;
 
-    @Column(name = "student_group")
-    private String studentGroup;
+    @ManyToMany
+    @JoinTable(
+            name = "student_groups_assignments",
+            joinColumns = @JoinColumn(name = "student_id"),
+            inverseJoinColumns = @JoinColumn(name = "group_id")
+    )
+    private List<StudentGroup> studentGroups;
+
+
 }
