@@ -15,6 +15,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.Optional;
@@ -130,5 +132,31 @@ class AttendanceServiceTest {
         assertNotNull(response);
         assertFalse(response.alreadyCheckIn());
         verify(recordRepo).save(any(AttendanceRecord.class));
+    }
+    @Test
+    void shouldThrowExceptionWhenSessionIsInactive() {
+        // given
+        String studentUid = "student-1";
+        String code = "ABC123";
+        CheckInRequest req = new CheckInRequest(null, code);
+
+        AttendanceSession inactiveSession = new AttendanceSession();
+        inactiveSession.setId(200L);
+        inactiveSession.setActive(false); // Sesja jest wyłączona
+
+        // Mockujemy znalezienie sesji, ale jest ona nieaktywna
+        when(sessionRepo.findByShortCode(code.toUpperCase()))
+                .thenReturn(Optional.of(inactiveSession));
+
+        // when & then
+        ResponseStatusException exception = assertThrows(ResponseStatusException.class, () -> {
+            attendanceService.checkIn(studentUid, req);
+        });
+
+        assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
+        assertEquals("Sesja nieaktywna", exception.getReason()); //
+
+        // Weryfikujemy, że proces zatrzymał się przed zapisem do bazy
+        verify(recordRepo, never()).save(any());
     }
 }
