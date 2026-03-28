@@ -76,4 +76,24 @@ public class ScheduleService {
 
         return scheduleRepository.findByDateBetween(start, end);
     }
+
+    public List<Schedule> getTodayScheduleForStudent(Student student) {
+        LocalDate today = LocalDate.now();
+        Instant start = today.atStartOfDay(ZoneId.systemDefault()).toInstant();
+        Instant end = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+
+        if (student.getStudentGroups() == null || student.getStudentGroups().isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> groupIds = student.getStudentGroups()
+                .stream()
+                .map(group -> group.getId())
+                .distinct()
+                .toList();
+
+        return scheduleRepository.findByDateBetweenAndStudentGroupIdInOrderByTimeAsc(start, end, groupIds);
+    }
+
+
 }

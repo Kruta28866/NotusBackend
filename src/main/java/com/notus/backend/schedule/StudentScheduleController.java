@@ -47,4 +47,31 @@ public class StudentScheduleController {
 
         return scheduleService.getScheduleForStudent(student);
     }
+
+    @GetMapping("/api/student/schedule/today")
+    public List<Schedule> getStudentTodaySchedule(
+            Authentication auth,
+            HttpServletRequest request
+    ) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
+
+        UserDto user = userService.findOrCreate(uid, email, name);
+
+        if (user.role() != Role.STUDENT) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Tylko student może pobrać swój dzisiejszy plan"
+            );
+        }
+
+        Student student = userService.findStudentWithGroupsByUid(uid)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Nie znaleziono studenta dla zalogowanego użytkownika"
+                ));
+
+        return scheduleService.getTodayScheduleForStudent(student);
+    }
 }

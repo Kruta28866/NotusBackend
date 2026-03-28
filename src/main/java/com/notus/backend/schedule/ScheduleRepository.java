@@ -30,4 +30,10 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
     List<Schedule> findByStudentGroupIdInOrderByDateAscTimeAsc(List<Long> groupIds);
 
     List<Schedule> findByDateBetween(Instant start, Instant end);
+
+    List<Schedule> findByDateBetweenAndStudentGroupIdInOrderByTimeAsc(
+            Instant start,
+            Instant end,
+            List<Long> groupIds
+    );
 }
