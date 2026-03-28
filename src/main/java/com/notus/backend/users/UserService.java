@@ -63,6 +63,10 @@ public class UserService {
         return studentRepo.findByClerkUserId(uid);
     }
 
+    public Optional<Student> findStudentWithGroupsByUid(String uid) {
+        return studentRepo.findWithStudentGroupsByClerkUserId(uid);
+    }
+
     public Optional<Teacher> findTeacherByUid(String uid) {
         return teacherRepo.findByClerkUserId(uid);
     }

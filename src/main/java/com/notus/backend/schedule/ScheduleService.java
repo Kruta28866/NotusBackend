@@ -1,5 +1,6 @@
 package com.notus.backend.schedule;
 
+import com.notus.backend.users.Student;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -31,6 +32,20 @@ public class ScheduleService {
 
     public List<Schedule> getSchedule(Instant start, Instant end, Long teacherId, String teacherName, Long groupId) {
         return getFilteredSchedule(start, end, teacherId, teacherName, groupId);
+    }
+
+    public List<Schedule> getScheduleForStudent(Student student) {
+        if (student.getStudentGroups() == null || student.getStudentGroups().isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> groupIds = student.getStudentGroups()
+                .stream()
+                .map(group -> group.getId())
+                .distinct()
+                .toList();
+
+        return scheduleRepository.findByStudentGroupIdInOrderByDateAscTimeAsc(groupIds);
     }
 
     private List<Schedule> getFilteredSchedule(
