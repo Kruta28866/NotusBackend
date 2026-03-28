@@ -1,10 +1,6 @@
 package com.notus.backend.attendance;
 
-import com.notus.backend.attendance.dto.CheckInRequest;
-import com.notus.backend.attendance.dto.CheckInResponse;
-import com.notus.backend.attendance.dto.CreateSessionRequest;
-import com.notus.backend.attendance.dto.CreateSessionResponse;
-import com.notus.backend.attendance.dto.QrResponse;
+import com.notus.backend.attendance.dto.*;
 import com.notus.backend.schedule.Schedule;
 import com.notus.backend.schedule.ScheduleRepository;
 import com.notus.backend.users.Student;
@@ -50,85 +46,103 @@ public class AttendanceService {
 
     @Transactional
     public CreateSessionResponse createSession(String teacherUid, CreateSessionRequest req) {
+
         if (req == null || req.scheduleId() == null || req.scheduleId().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak scheduleId sesji");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Brak scheduleId"
+            );
         }
 
-        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
-        );
+        var teacher = teacherRepo.findByClerkUserId(teacherUid)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Nauczyciel nie znaleziony"
+                        )
+                );
 
-        Schedule schedule = scheduleRepository.findById(req.scheduleId().trim())
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Nie znaleziono wpisu planu zajęć"
-                ));
+        Schedule schedule = scheduleRepository.findById(req.scheduleId())
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Nie znaleziono wpisu planu"
+                        )
+                );
 
-        if (schedule.getTeacherEntity() == null || teacher.getId() == null ||
-                !teacher.getId().equals(schedule.getTeacherEntity().getId())) {
+        if (schedule.getTeacherEntity() == null ||
+                !schedule.getTeacherEntity().getId().equals(teacher.getId())) {
+
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
-                    "Nie możesz utworzyć sesji dla zajęć innego nauczyciela"
+                    "Nie możesz utworzyć sesji dla cudzych zajęć"
             );
         }
 
-        var existingActive = sessionRepo.findByScheduleIdAndActiveTrue(schedule.getId());
-        if (existingActive.isPresent()) {
-            AttendanceSession existing = existingActive.get();
-            return new CreateSessionResponse(
-                    existing.getId(),
-                    existing.getSchedule().getId(),
-                    existing.getTitle(),
-                    existing.getSchedule().getRoom(),
-                    existing.getSchedule().getTime(),
-                    existing.getCreatedAt(),
-                    existing.isActive()
-            );
-        }
+        AttendanceSession session = new AttendanceSession();
+        session.setTeacher(teacher);
+        session.setSchedule(schedule);
+        session.setShortCode(generateShortCode());
+        session.setActive(true);
 
-        AttendanceSession s = new AttendanceSession();
-        s.setTeacher(teacher);
-        s.setSchedule(schedule);
-        s.setShortCode(generateShortCode());
-        s.setActive(true);
-        s.setCreatedAt(Instant.now());
+        Instant createdAt = schedule.getDate() != null
+                ? schedule.getDate()
+                : Instant.now();
 
-        s = sessionRepo.save(s);
+        session.setCreatedAt(createdAt);
+
+        session = sessionRepo.save(session);
 
         return new CreateSessionResponse(
-                s.getId(),
-                s.getSchedule().getId(),
-                s.getTitle(),
-                s.getSchedule().getRoom(),
-                s.getSchedule().getTime(),
-                s.getCreatedAt(),
-                s.isActive()
+                session.getId(),
+                schedule.getId(),
+                schedule.getSubject(),
+                schedule.getRoom(),
+                schedule.getTime(),
+                session.getCreatedAt(),
+                session.isActive()
         );
     }
 
     @Transactional(readOnly = true)
     public QrResponse generateQr(String teacherUid, Long sessionId) {
-        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
-        );
 
-        AttendanceSession s = sessionRepo.findByIdAndTeacher(sessionId, teacher)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Sesja nie istnieje lub nie jest Twoja"
-                ));
+        var teacher = teacherRepo.findByClerkUserId(teacherUid)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Nauczyciel nie znaleziony"
+                        )
+                );
+
+        AttendanceSession s = sessionRepo
+                .findByIdAndTeacher(sessionId, teacher)
+                .orElseThrow(() ->
+                        new ResponseStatusException(
+                                HttpStatus.NOT_FOUND,
+                                "Sesja nie istnieje"
+                        )
+                );
 
         if (!s.isActive()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sesja nieaktywna");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Sesja nieaktywna"
+            );
         }
+
         if (s.getShortCode() == null || s.getShortCode().isBlank()) {
             s.setShortCode(generateShortCode());
             s = sessionRepo.save(s);
         }
 
         String qrToken = qrTokenService.createToken(s.getId());
-        long expiresAt = Instant.now().getEpochSecond() + qrTokenService.ttlSeconds();
-        String pngBase64 = qrImageService.toPngBase64(qrToken, 320);
+        long expiresAt =
+                Instant.now().getEpochSecond()
+                        + qrTokenService.ttlSeconds();
+
+        String pngBase64 =
+                qrImageService.toPngBase64(qrToken, 320);
 
         return new QrResponse(
                 s.getId(),
@@ -140,28 +154,51 @@ public class AttendanceService {
     }
 
     @Transactional
-    public CheckInResponse checkIn(String studentUid, CheckInRequest req) {
+    public CheckInResponse checkIn(
+            String studentUid,
+            CheckInRequest req
+    ) {
+
         if (req == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak danych check-in");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Brak danych check-in"
+            );
         }
 
         AttendanceSession s;
 
         if (req.qrToken() != null && !req.qrToken().isBlank()) {
-            var data = qrTokenService.verifyAndParse(req.qrToken());
+
+            var data =
+                    qrTokenService.verifyAndParse(req.qrToken());
 
             s = sessionRepo.findById(data.sessionId())
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND,
-                            "Sesja nie istnieje"
-                    ));
-        } else if (req.shortCode() != null && !req.shortCode().isBlank()) {
-            s = sessionRepo.findByShortCode(req.shortCode().trim().toUpperCase())
-                    .orElseThrow(() -> new ResponseStatusException(
-                            HttpStatus.NOT_FOUND,
-                            "Kod jest niepoprawny."
-                    ));
+                    .orElseThrow(() ->
+                            new ResponseStatusException(
+                                    HttpStatus.NOT_FOUND,
+                                    "Sesja nie istnieje"
+                            )
+                    );
+
+        } else if (
+                req.shortCode() != null
+                        && !req.shortCode().isBlank()
+        ) {
+
+            s = sessionRepo
+                    .findByShortCode(
+                            req.shortCode().trim().toUpperCase()
+                    )
+                    .orElseThrow(() ->
+                            new ResponseStatusException(
+                                    HttpStatus.NOT_FOUND,
+                                    "Kod niepoprawny"
+                            )
+                    );
+
         } else {
+
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,
                     "Brak qrToken lub shortCode"
@@ -169,25 +206,38 @@ public class AttendanceService {
         }
 
         if (!s.isActive()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sesja nieaktywna");
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST,
+                    "Sesja nieaktywna"
+            );
         }
 
-        var student = studentRepo.findByClerkUserId(studentUid).orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "Student nie znaleziony")
-        );
-        String name = student.getName();
-        String index = student.getIndexNumber();
+        var student =
+                studentRepo.findByClerkUserId(studentUid)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Student nie znaleziony"
+                                )
+                        );
 
-        var existing = recordRepo.findBySessionIdAndStudent(s.getId(), student);
+        var existing =
+                recordRepo.findBySessionIdAndStudent(
+                        s.getId(),
+                        student
+                );
+
         if (existing.isPresent()) {
-            AttendanceRecord existingRecord = existing.get();
+
+            AttendanceRecord existingRecord =
+                    existing.get();
 
             return new CheckInResponse(
                     existingRecord.getSessionId(),
                     s.getTitle(),
                     studentUid,
-                    name,
-                    index,
+                    student.getName(),
+                    student.getIndexNumber(),
                     existingRecord.getCheckedInAt(),
                     true,
                     s.getEndsAt()
@@ -195,17 +245,19 @@ public class AttendanceService {
         }
 
         AttendanceRecord r = new AttendanceRecord();
+
         r.setSessionId(s.getId());
         r.setStudent(student);
         r.setCheckedInAt(Instant.now());
+
         r = recordRepo.save(r);
 
         return new CheckInResponse(
                 r.getSessionId(),
                 s.getTitle(),
                 studentUid,
-                name,
-                index,
+                student.getName(),
+                student.getIndexNumber(),
                 r.getCheckedInAt(),
                 false,
                 s.getEndsAt()
@@ -213,31 +265,44 @@ public class AttendanceService {
     }
 
     @Transactional(readOnly = true)
-    public List<CheckInResponse> getRecordsForSession(String teacherUid, Long sessionId) {
-        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() ->
-                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
-        );
+    public List<CheckInResponse> getRecordsForSession(
+            String teacherUid,
+            Long sessionId
+    ) {
 
-        AttendanceSession session = sessionRepo.findByIdAndTeacher(sessionId, teacher)
-                .orElseThrow(() -> new ResponseStatusException(
-                        HttpStatus.NOT_FOUND,
-                        "Sesja nie istnieje lub nie jest Twoja"
-                ));
+        var teacher =
+                teacherRepo.findByClerkUserId(teacherUid)
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Nauczyciel nie znaleziony"
+                                )
+                        );
+
+        AttendanceSession session =
+                sessionRepo.findByIdAndTeacher(
+                                sessionId,
+                                teacher
+                        )
+                        .orElseThrow(() ->
+                                new ResponseStatusException(
+                                        HttpStatus.NOT_FOUND,
+                                        "Sesja nie istnieje"
+                                )
+                        );
 
         return recordRepo.findBySessionId(sessionId)
                 .stream()
                 .map(r -> {
+
                     Student student = r.getStudent();
-                    String name = student != null ? student.getName() : "Unknown";
-                    String index = student != null ? student.getIndexNumber() : null;
-                    String uid = student != null ? student.getClerkUserId() : null;
 
                     return new CheckInResponse(
                             r.getSessionId(),
                             session.getTitle(),
-                            uid,
-                            name,
-                            index,
+                            student.getClerkUserId(),
+                            student.getName(),
+                            student.getIndexNumber(),
                             r.getCheckedInAt(),
                             false,
                             session.getEndsAt()
@@ -246,14 +311,24 @@ public class AttendanceService {
                 .toList();
     }
 
-    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final SecureRandom
+            SECURE_RANDOM = new SecureRandom();
 
     private String generateShortCode() {
-        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+        String chars =
+                "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
         StringBuilder code = new StringBuilder();
 
         for (int i = 0; i < 6; i++) {
-            code.append(chars.charAt(SECURE_RANDOM.nextInt(chars.length())));
+            code.append(
+                    chars.charAt(
+                            SECURE_RANDOM.nextInt(
+                                    chars.length()
+                            )
+                    )
+            );
         }
 
         return code.toString();

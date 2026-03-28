@@ -1,3 +1,5 @@
 package com.notus.backend.attendance.dto;
 
-public record CreateSessionRequest(String scheduleId) {}
+public record CreateSessionRequest(
+        String scheduleId
+) {}
