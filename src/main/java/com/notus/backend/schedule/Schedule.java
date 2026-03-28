@@ -1,9 +1,9 @@
 package com.notus.backend.schedule;
 
-import com.notus.backend.users.Teacher;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.notus.backend.attendance.group.StudentGroup;
 import jakarta.persistence.*;
 import lombok.*;
+
 import java.time.Instant;
 
 @Entity
@@ -32,4 +32,12 @@ public class Schedule {
     private String type;
     private String room;
     private String color;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "student_group_id")
+    private StudentGroup studentGroup;
+
+    @Transient
+    public String getStudentGroupName() {
+        return studentGroup != null ? studentGroup.getCode() : null;
+    }
 }

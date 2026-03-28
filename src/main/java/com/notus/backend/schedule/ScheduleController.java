@@ -1,23 +1,29 @@
 package com.notus.backend.schedule;
 
-import org.springframework.web.bind.annotation.*;
 import lombok.RequiredArgsConstructor;
-import java.time.LocalDate;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/schedule")
 @RequiredArgsConstructor
 public class ScheduleController {
+
     private final ScheduleService scheduleService;
 
     @GetMapping("/today")
     public List<Schedule> getTodaySchedule(
             @RequestParam(required = false) Long teacherId,
-            @RequestParam(required = false) String teacherName
+            @RequestParam(required = false) String teacherName,
+            @RequestParam(required = false) Long groupId
     ) {
-        return scheduleService.getTodayScheduleForTeacher(teacherId, teacherName);
+        return scheduleService.getTodaySchedule(teacherId, teacherName, groupId);
     }
 
     @GetMapping("/by-day")
@@ -30,8 +36,15 @@ public class ScheduleController {
             @RequestParam String start,
             @RequestParam String end,
             @RequestParam(required = false) Long teacherId,
-            @RequestParam(required = false) String teacherName
+            @RequestParam(required = false) String teacherName,
+            @RequestParam(required = false) Long groupId
     ) {
-        return scheduleService.getSchedule(Instant.parse(start), Instant.parse(end), teacherId, teacherName);
+        return scheduleService.getSchedule(
+                Instant.parse(start),
+                Instant.parse(end),
+                teacherId,
+                teacherName,
+                groupId
+        );
     }
 }
