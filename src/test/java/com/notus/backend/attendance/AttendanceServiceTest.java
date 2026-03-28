@@ -1,9 +1,12 @@
 package com.notus.backend.attendance;
 
+import com.notus.backend.attendance.dto.CheckInRequest;
+import com.notus.backend.attendance.dto.CheckInResponse;
 import com.notus.backend.attendance.dto.CreateSessionRequest;
 import com.notus.backend.attendance.dto.CreateSessionResponse;
 import com.notus.backend.schedule.Schedule;
 import com.notus.backend.schedule.ScheduleRepository;
+import com.notus.backend.users.Student;
 import com.notus.backend.users.StudentRepository;
 import com.notus.backend.users.Teacher;
 import com.notus.backend.users.TeacherRepository;
@@ -46,6 +49,7 @@ class AttendanceServiceTest {
 
     @InjectMocks
     private AttendanceService attendanceService;
+
     @Test
     void shouldCreateSession() {
         // given
@@ -98,5 +102,33 @@ class AttendanceServiceTest {
         verify(teacherRepo).findByClerkUserId(teacherUid);
         verify(scheduleRepository).findById(scheduleId);
         verify(sessionRepo).save(any(AttendanceSession.class));
+    }
+
+    @Test
+    void shouldCheckInUsingShortCode() {
+        // given
+        String studentUid = "student-1";
+        String code = "ABC123";
+        CheckInRequest req = new CheckInRequest(null, code); // brak tokena QR, tylko kod
+
+        AttendanceSession session = new AttendanceSession();
+        session.setId(100L);
+        session.setActive(true);
+
+        Student student = new Student();
+        student.setClerkUserId(studentUid);
+
+        when(sessionRepo.findByShortCode(code)).thenReturn(Optional.of(session));
+        when(studentRepo.findByClerkUserId(studentUid)).thenReturn(Optional.of(student));
+        when(recordRepo.findBySessionIdAndStudent(any(), any())).thenReturn(Optional.empty());
+        when(recordRepo.save(any())).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // when
+        CheckInResponse response = attendanceService.checkIn(studentUid, req);
+
+        // then
+        assertNotNull(response);
+        assertFalse(response.alreadyCheckIn());
+        verify(recordRepo).save(any(AttendanceRecord.class));
     }
 }
