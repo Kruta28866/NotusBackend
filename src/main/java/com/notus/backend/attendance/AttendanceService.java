@@ -1,6 +1,12 @@
 package com.notus.backend.attendance;
 
-import com.notus.backend.attendance.dto.*;
+import com.notus.backend.attendance.dto.CheckInRequest;
+import com.notus.backend.attendance.dto.CheckInResponse;
+import com.notus.backend.attendance.dto.CreateSessionRequest;
+import com.notus.backend.attendance.dto.CreateSessionResponse;
+import com.notus.backend.attendance.dto.QrResponse;
+import com.notus.backend.schedule.Schedule;
+import com.notus.backend.schedule.ScheduleRepository;
 import com.notus.backend.users.Student;
 import com.notus.backend.users.StudentRepository;
 import com.notus.backend.users.TeacherRepository;
@@ -22,6 +28,7 @@ public class AttendanceService {
     private final QrImageService qrImageService;
     private final StudentRepository studentRepo;
     private final TeacherRepository teacherRepo;
+    private final ScheduleRepository scheduleRepository;
 
     public AttendanceService(
             AttendanceSessionRepository sessionRepo,
@@ -29,7 +36,8 @@ public class AttendanceService {
             QrTokenService qrTokenService,
             QrImageService qrImageService,
             StudentRepository studentRepo,
-            TeacherRepository teacherRepo
+            TeacherRepository teacherRepo,
+            ScheduleRepository scheduleRepository
     ) {
         this.sessionRepo = sessionRepo;
         this.recordRepo = recordRepo;
@@ -37,29 +45,62 @@ public class AttendanceService {
         this.qrImageService = qrImageService;
         this.studentRepo = studentRepo;
         this.teacherRepo = teacherRepo;
+        this.scheduleRepository = scheduleRepository;
     }
 
     @Transactional
     public CreateSessionResponse createSession(String teacherUid, CreateSessionRequest req) {
-        if (req == null || req.title() == null || req.title().isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak tytułu sesji");
+        if (req == null || req.scheduleId() == null || req.scheduleId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak scheduleId sesji");
         }
 
-        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() -> 
-            new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
+        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
         );
+
+        Schedule schedule = scheduleRepository.findById(req.scheduleId().trim())
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND,
+                        "Nie znaleziono wpisu planu zajęć"
+                ));
+
+        if (schedule.getTeacherEntity() == null || teacher.getId() == null ||
+                !teacher.getId().equals(schedule.getTeacherEntity().getId())) {
+            throw new ResponseStatusException(
+                    HttpStatus.FORBIDDEN,
+                    "Nie możesz utworzyć sesji dla zajęć innego nauczyciela"
+            );
+        }
+
+        var existingActive = sessionRepo.findByScheduleIdAndActiveTrue(schedule.getId());
+        if (existingActive.isPresent()) {
+            AttendanceSession existing = existingActive.get();
+            return new CreateSessionResponse(
+                    existing.getId(),
+                    existing.getSchedule().getId(),
+                    existing.getTitle(),
+                    existing.getSchedule().getRoom(),
+                    existing.getSchedule().getTime(),
+                    existing.getCreatedAt(),
+                    existing.isActive()
+            );
+        }
 
         AttendanceSession s = new AttendanceSession();
         s.setTeacher(teacher);
-        s.setTitle(req.title().trim());
+        s.setSchedule(schedule);
         s.setShortCode(generateShortCode());
         s.setActive(true);
         s.setCreatedAt(Instant.now());
 
         s = sessionRepo.save(s);
+
         return new CreateSessionResponse(
                 s.getId(),
+                s.getSchedule().getId(),
                 s.getTitle(),
+                s.getSchedule().getRoom(),
+                s.getSchedule().getTime(),
                 s.getCreatedAt(),
                 s.isActive()
         );
@@ -67,8 +108,8 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public QrResponse generateQr(String teacherUid, Long sessionId) {
-        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() -> 
-            new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
+        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
         );
 
         AttendanceSession s = sessionRepo.findByIdAndTeacher(sessionId, teacher)
@@ -131,8 +172,8 @@ public class AttendanceService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sesja nieaktywna");
         }
 
-        var student = studentRepo.findByClerkUserId(studentUid).orElseThrow(() -> 
-            new ResponseStatusException(HttpStatus.NOT_FOUND, "Student nie znaleziony")
+        var student = studentRepo.findByClerkUserId(studentUid).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Student nie znaleziony")
         );
         String name = student.getName();
         String index = student.getIndexNumber();
@@ -173,8 +214,8 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public List<CheckInResponse> getRecordsForSession(String teacherUid, Long sessionId) {
-        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() -> 
-            new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
+        var teacher = teacherRepo.findByClerkUserId(teacherUid).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony")
         );
 
         AttendanceSession session = sessionRepo.findByIdAndTeacher(sessionId, teacher)

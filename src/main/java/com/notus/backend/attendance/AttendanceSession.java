@@ -1,5 +1,6 @@
 package com.notus.backend.attendance;
 
+import com.notus.backend.schedule.Schedule;
 import com.notus.backend.users.Teacher;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -13,7 +14,8 @@ import java.time.Instant;
 @Table(name = "attendance_session",
         indexes = {
                 @Index(name = "idx_att_sess_teacher_id", columnList = "teacher_id"),
-                @Index(name = "idx_att_sess_active", columnList = "active")
+                @Index(name = "idx_att_sess_active", columnList = "active"),
+                @Index(name = "idx_att_sess_schedule_id", columnList = "schedule_id")
         })
 public class AttendanceSession {
 
@@ -25,8 +27,9 @@ public class AttendanceSession {
     @JoinColumn(name = "teacher_id", nullable = false)
     private Teacher teacher;
 
-    @Column(nullable = false)
-    private String title;
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "schedule_id", nullable = false)
+    private Schedule schedule;
 
     @Column(name = "short_code", unique = true, length = 8)
     private String shortCode;
@@ -37,16 +40,18 @@ public class AttendanceSession {
     @Column(nullable = false)
     private boolean active;
 
-    // opcjonalnie: kiedy kończy się zajęcia
     @Column(name = "ends_at")
     private Instant endsAt;
 
     @PrePersist
     void prePersist() {
-        if (createdAt == null) createdAt = Instant.now();
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
     }
 
-
-
-
+    @Transient
+    public String getTitle() {
+        return schedule != null ? schedule.getSubject() : null;
+    }
 }
