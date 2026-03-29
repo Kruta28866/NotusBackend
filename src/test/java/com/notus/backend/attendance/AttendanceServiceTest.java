@@ -142,9 +142,8 @@ class AttendanceServiceTest {
 
         AttendanceSession inactiveSession = new AttendanceSession();
         inactiveSession.setId(200L);
-        inactiveSession.setActive(false); // Sesja jest wyłączona
+        inactiveSession.setActive(false);
 
-        // Mockujemy znalezienie sesji, ale jest ona nieaktywna
         when(sessionRepo.findByShortCode(code.toUpperCase()))
                 .thenReturn(Optional.of(inactiveSession));
 
@@ -156,7 +155,42 @@ class AttendanceServiceTest {
         assertEquals(HttpStatus.BAD_REQUEST, exception.getStatusCode());
         assertEquals("Sesja nieaktywna", exception.getReason()); //
 
-        // Weryfikujemy, że proces zatrzymał się przed zapisem do bazy
         verify(recordRepo, never()).save(any());
+    }
+
+    @Test
+    void shouldNotCreateDuplicateRecordWhenStudentAlreadyCheckedIn() {
+        // given
+        String studentUid = "student-1";
+        CheckInRequest req = new CheckInRequest(null, "ABC123");
+
+        AttendanceSession session = new AttendanceSession();
+        session.setId(100L);
+        session.setActive(true);
+        session.setShortCode("ABC123");
+
+        Student student = new Student();
+        student.setClerkUserId(studentUid);
+        student.setName("Jan Kowalski");
+
+        AttendanceRecord existingRecord = new AttendanceRecord();
+        existingRecord.setSessionId(100L);
+        existingRecord.setStudent(student);
+        existingRecord.setCheckedInAt(Instant.now());
+
+        when(sessionRepo.findByShortCode("ABC123")).thenReturn(Optional.of(session));
+        when(studentRepo.findByClerkUserId(studentUid)).thenReturn(Optional.of(student));
+        when(recordRepo.findBySessionIdAndStudent(100L, student))
+                .thenReturn(Optional.of(existingRecord));
+
+        // when
+        CheckInResponse response = attendanceService.checkIn(studentUid, req);
+
+        // then
+        assertNotNull(response);
+        assertTrue(response.alreadyCheckIn(), "Flaga alreadyCheckIn powinna być true");
+        assertEquals("Jan Kowalski", response.studentName());
+
+        verify(recordRepo, never()).save(any(AttendanceRecord.class));
     }
 }
