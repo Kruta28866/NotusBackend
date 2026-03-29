@@ -6,6 +6,7 @@ import com.notus.backend.schedule.ScheduleRepository;
 import com.notus.backend.users.Student;
 import com.notus.backend.users.StudentRepository;
 import com.notus.backend.users.TeacherRepository;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -15,6 +16,7 @@ import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.List;
 
+@Slf4j
 @Service
 public class AttendanceService {
 
@@ -46,37 +48,28 @@ public class AttendanceService {
 
     @Transactional
     public CreateSessionResponse createSession(String teacherUid, CreateSessionRequest req) {
+        log.info("Request: Create session for teacher {} and schedule {}", teacherUid, req != null ? req.scheduleId() : "null");
 
         if (req == null || req.scheduleId() == null || req.scheduleId().isBlank()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Brak scheduleId"
-            );
+            log.error("Failed to create session: Missing scheduleId");
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak scheduleId");
         }
 
         var teacher = teacherRepo.findByClerkUserId(teacherUid)
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Nauczyciel nie znaleziony"
-                        )
-                );
+                .orElseThrow(() -> {
+                    log.error("Teacher not found: {}", teacherUid);
+                    return new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony");
+                });
 
         Schedule schedule = scheduleRepository.findById(req.scheduleId())
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Nie znaleziono wpisu planu"
-                        )
-                );
+                .orElseThrow(() -> {
+                    log.error("Schedule not found: {}", req.scheduleId());
+                    return new ResponseStatusException(HttpStatus.NOT_FOUND, "Nie znaleziono wpisu planu");
+                });
 
-        if (schedule.getTeacherEntity() == null ||
-                !schedule.getTeacherEntity().getId().equals(teacher.getId())) {
-
-            throw new ResponseStatusException(
-                    HttpStatus.FORBIDDEN,
-                    "Nie możesz utworzyć sesji dla cudzych zajęć"
-            );
+        if (schedule.getTeacherEntity() == null || !schedule.getTeacherEntity().getId().equals(teacher.getId())) {
+            log.warn("Access Denied: Teacher {} tried to create session for foreign schedule {}", teacherUid, schedule.getId());
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz utworzyć sesji dla cudzych zajęć");
         }
 
         AttendanceSession session = new AttendanceSession();
@@ -85,13 +78,11 @@ public class AttendanceService {
         session.setShortCode(generateShortCode());
         session.setActive(true);
 
-        Instant createdAt = schedule.getDate() != null
-                ? schedule.getDate()
-                : Instant.now();
-
+        Instant createdAt = schedule.getDate() != null ? schedule.getDate() : Instant.now();
         session.setCreatedAt(createdAt);
 
         session = sessionRepo.save(session);
+        log.info("Successfully created session ID: {} with code: {}", session.getId(), session.getShortCode());
 
         return new CreateSessionResponse(
                 session.getId(),
@@ -106,29 +97,16 @@ public class AttendanceService {
 
     @Transactional(readOnly = true)
     public QrResponse generateQr(String teacherUid, Long sessionId) {
-
+        log.debug("Generating QR for session {} by teacher {}", sessionId, teacherUid);
         var teacher = teacherRepo.findByClerkUserId(teacherUid)
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Nauczyciel nie znaleziony"
-                        )
-                );
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony"));
 
-        AttendanceSession s = sessionRepo
-                .findByIdAndTeacher(sessionId, teacher)
-                .orElseThrow(() ->
-                        new ResponseStatusException(
-                                HttpStatus.NOT_FOUND,
-                                "Sesja nie istnieje"
-                        )
-                );
+        AttendanceSession s = sessionRepo.findByIdAndTeacher(sessionId, teacher)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sesja nie istnieje"));
 
         if (!s.isActive()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Sesja nieaktywna"
-            );
+            log.warn("QR request rejected: Session {} is inactive", sessionId);
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sesja nieaktywna");
         }
 
         if (s.getShortCode() == null || s.getShortCode().isBlank()) {
@@ -137,200 +115,87 @@ public class AttendanceService {
         }
 
         String qrToken = qrTokenService.createToken(s.getId());
-        long expiresAt =
-                Instant.now().getEpochSecond()
-                        + qrTokenService.ttlSeconds();
+        long expiresAt = Instant.now().getEpochSecond() + qrTokenService.ttlSeconds();
+        String pngBase64 = qrImageService.toPngBase64(qrToken, 320);
 
-        String pngBase64 =
-                qrImageService.toPngBase64(qrToken, 320);
-
-        return new QrResponse(
-                s.getId(),
-                qrToken,
-                pngBase64,
-                expiresAt,
-                s.getShortCode()
-        );
+        return new QrResponse(s.getId(), qrToken, pngBase64, expiresAt, s.getShortCode());
     }
 
     @Transactional
-    public CheckInResponse checkIn(
-            String studentUid,
-            CheckInRequest req
-    ) {
+    public CheckInResponse checkIn(String studentUid, CheckInRequest req) {
+        log.info("Student {} attempt check-in", studentUid);
 
         if (req == null) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Brak danych check-in"
-            );
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak danych check-in");
         }
 
         AttendanceSession s;
-
         if (req.qrToken() != null && !req.qrToken().isBlank()) {
-
-            var data =
-                    qrTokenService.verifyAndParse(req.qrToken());
-
+            var data = qrTokenService.verifyAndParse(req.qrToken());
             s = sessionRepo.findById(data.sessionId())
-                    .orElseThrow(() ->
-                            new ResponseStatusException(
-                                    HttpStatus.NOT_FOUND,
-                                    "Sesja nie istnieje"
-                            )
-                    );
-
-        } else if (
-                req.shortCode() != null
-                        && !req.shortCode().isBlank()
-        ) {
-
-            s = sessionRepo
-                    .findByShortCode(
-                            req.shortCode().trim().toUpperCase()
-                    )
-                    .orElseThrow(() ->
-                            new ResponseStatusException(
-                                    HttpStatus.NOT_FOUND,
-                                    "Kod niepoprawny"
-                            )
-                    );
-
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sesja nie istnieje"));
+        } else if (req.shortCode() != null && !req.shortCode().isBlank()) {
+            s = sessionRepo.findByShortCode(req.shortCode().trim().toUpperCase())
+                    .orElseThrow(() -> {
+                        log.warn("Invalid short code attempt: {} by student {}", req.shortCode(), studentUid);
+                        return new ResponseStatusException(HttpStatus.NOT_FOUND, "Kod niepoprawny");
+                    });
         } else {
-
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Brak qrToken lub shortCode"
-            );
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak qrToken lub shortCode");
         }
 
         if (!s.isActive()) {
-            throw new ResponseStatusException(
-                    HttpStatus.BAD_REQUEST,
-                    "Sesja nieaktywna"
-            );
+            log.warn("Check-in rejected: Session {} is inactive", s.getId());
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Sesja nieaktywna");
         }
 
-        var student =
-                studentRepo.findByClerkUserId(studentUid)
-                        .orElseThrow(() ->
-                                new ResponseStatusException(
-                                        HttpStatus.NOT_FOUND,
-                                        "Student nie znaleziony"
-                                )
-                        );
+        var student = studentRepo.findByClerkUserId(studentUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student nie znaleziony"));
 
-        var existing =
-                recordRepo.findBySessionIdAndStudent(
-                        s.getId(),
-                        student
-                );
+        var existing = recordRepo.findBySessionIdAndStudent(s.getId(), student);
 
         if (existing.isPresent()) {
-
-            AttendanceRecord existingRecord =
-                    existing.get();
-
-            return new CheckInResponse(
-                    existingRecord.getSessionId(),
-                    s.getTitle(),
-                    studentUid,
-                    student.getName(),
-                    student.getIndexNumber(),
-                    existingRecord.getCheckedInAt(),
-                    true,
-                    s.getEndsAt()
-            );
+            log.info("Student {} already checked in for session {}", studentUid, s.getId());
+            AttendanceRecord existingRecord = existing.get();
+            return new CheckInResponse(existingRecord.getSessionId(), s.getSchedule().getSubject(), studentUid, student.getName(), student.getIndexNumber(), existingRecord.getCheckedInAt(), true, s.getSchedule().getDate());
         }
 
         AttendanceRecord r = new AttendanceRecord();
-
         r.setSessionId(s.getId());
         r.setStudent(student);
         r.setCheckedInAt(Instant.now());
 
         r = recordRepo.save(r);
+        log.info("Student {} successfully checked in for session {}", studentUid, s.getId());
 
-        return new CheckInResponse(
-                r.getSessionId(),
-                s.getTitle(),
-                studentUid,
-                student.getName(),
-                student.getIndexNumber(),
-                r.getCheckedInAt(),
-                false,
-                s.getEndsAt()
-        );
+        return new CheckInResponse(r.getSessionId(), s.getSchedule().getSubject(), studentUid, student.getName(), student.getIndexNumber(), r.getCheckedInAt(), false, s.getSchedule().getDate());
     }
 
     @Transactional(readOnly = true)
-    public List<CheckInResponse> getRecordsForSession(
-            String teacherUid,
-            Long sessionId
-    ) {
+    public List<CheckInResponse> getRecordsForSession(String teacherUid, Long sessionId) {
+        var teacher = teacherRepo.findByClerkUserId(teacherUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony"));
 
-        var teacher =
-                teacherRepo.findByClerkUserId(teacherUid)
-                        .orElseThrow(() ->
-                                new ResponseStatusException(
-                                        HttpStatus.NOT_FOUND,
-                                        "Nauczyciel nie znaleziony"
-                                )
-                        );
-
-        AttendanceSession session =
-                sessionRepo.findByIdAndTeacher(
-                                sessionId,
-                                teacher
-                        )
-                        .orElseThrow(() ->
-                                new ResponseStatusException(
-                                        HttpStatus.NOT_FOUND,
-                                        "Sesja nie istnieje"
-                                )
-                        );
+        AttendanceSession session = sessionRepo.findByIdAndTeacher(sessionId, teacher)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Sesja nie istnieje"));
 
         return recordRepo.findBySessionId(sessionId)
                 .stream()
                 .map(r -> {
-
                     Student student = r.getStudent();
-
-                    return new CheckInResponse(
-                            r.getSessionId(),
-                            session.getTitle(),
-                            student.getClerkUserId(),
-                            student.getName(),
-                            student.getIndexNumber(),
-                            r.getCheckedInAt(),
-                            false,
-                            session.getEndsAt()
-                    );
+                    return new CheckInResponse(r.getSessionId(), session.getSchedule().getSubject(), student.getClerkUserId(), student.getName(), student.getIndexNumber(), r.getCheckedInAt(), false, session.getSchedule().getDate());
                 })
                 .toList();
     }
 
-    private static final SecureRandom
-            SECURE_RANDOM = new SecureRandom();
+    private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private String generateShortCode() {
-
-        String chars =
-                "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-
+        String chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
         StringBuilder code = new StringBuilder();
-
         for (int i = 0; i < 6; i++) {
-            code.append(
-                    chars.charAt(
-                            SECURE_RANDOM.nextInt(
-                                    chars.length()
-                            )
-                    )
-            );
+            code.append(chars.charAt(SECURE_RANDOM.nextInt(chars.length())));
         }
-
         return code.toString();
     }
 }
