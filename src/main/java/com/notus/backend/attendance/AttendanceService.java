@@ -198,4 +198,34 @@ public class AttendanceService {
         }
         return code.toString();
     }
+
+    @Transactional
+    public void closeSession(String teacherUid, Long sessionId) {
+        log.info("Teacher {} is closing session {}", teacherUid, sessionId);
+
+        // 1. Znajdź nauczyciela
+        var teacher = teacherRepo.findByClerkUserId(teacherUid)
+                .orElseThrow(() -> {
+                    log.error("Teacher not found: {}", teacherUid);
+                    return new ResponseStatusException(HttpStatus.NOT_FOUND, "Nauczyciel nie znaleziony");
+                });
+
+        // 2. Znajdź sesję (findByIdAndTeacher gwarantuje, że nikt nie zamknie cudzej sesji)
+        AttendanceSession session = sessionRepo.findByIdAndTeacher(sessionId, teacher)
+                .orElseThrow(() -> {
+                    log.error("Session {} not found or doesn't belong to teacher {}", sessionId, teacherUid);
+                    return new ResponseStatusException(HttpStatus.NOT_FOUND, "Sesja nie istnieje lub brak uprawnień");
+                });
+
+        // 3. Jeśli już zamknięta, nie ma sensu nic robić (można zalogować warn)
+        if (!session.isActive()) {
+            log.warn("Session {} is already closed", sessionId);
+            return;
+        }
+
+        // 4. Zamknij i zapisz
+        session.setActive(false);
+        sessionRepo.save(session);
+        log.info("Session {} successfully closed by teacher {}", sessionId, teacherUid);
+    }
 }

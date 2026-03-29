@@ -90,4 +90,19 @@ public class AttendanceController {
 
         return attendanceService.getRecordsForSession(uid, id);
     }
+
+    @PostMapping("/sessions/{sessionId}/close")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void closeSession(Authentication auth,
+                             HttpServletRequest request,
+                             @PathVariable Long sessionId) {
+        String uid = (String) auth.getPrincipal();
+        UserDto u = resolveUser(auth, request);
+
+        if (u.role() != Role.TEACHER && u.role() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER/ADMIN może zamykać sesje");
+        }
+
+        attendanceService.closeSession(uid, sessionId);
+    }
 }
