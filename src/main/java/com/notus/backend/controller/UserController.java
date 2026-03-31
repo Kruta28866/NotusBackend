@@ -18,13 +18,14 @@ public class UserController {
     }
 
     @GetMapping("/api/me")
-    public UserDto me(Authentication authentication, 
-                     HttpServletRequest request,
-                     @RequestParam(required = false) String name) {
+    public UserDto me(
+            Authentication authentication,
+            HttpServletRequest request,
+            @RequestParam(required = false) String name
+    ) {
         String uid = (String) authentication.getPrincipal();
         String email = (String) request.getAttribute("clerk_email");
-        
-        // If name wasn't in JWT, use the one from query param
+
         String finalName = (String) request.getAttribute("clerk_name");
         if (finalName == null || finalName.isBlank()) {
             finalName = name;

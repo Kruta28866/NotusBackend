@@ -9,5 +9,4 @@ class NotusBackendApplicationTests {
     @Test
     void contextLoads() {
     }
-
 }

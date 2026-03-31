@@ -20,98 +20,42 @@ public class UserService {
     public UserDto findOrCreate(String clerkUserId, String email, String name) {
         Role targetRole = roleFromEmail(email);
 
-        // 1. Try to find existing first by UID
-        Optional<Teacher> tOpt = teacherRepo.findByClerkUserId(clerkUserId);
-        if (tOpt.isPresent()) {
-            Teacher t = tOpt.get();
+        Optional<Teacher> existingTeacher = teacherRepo.findByClerkUserId(clerkUserId);
+        if (existingTeacher.isPresent()) {
+            Teacher teacher = existingTeacher.get();
 
-            // Check if we should move them to Students (rare but possible)
             if (targetRole == Role.STUDENT) {
-                studentRepo.findByClerkUserId(clerkUserId).ifPresentOrElse(
-                    s -> {}, // Already spans both? Should not happen.
-                    () -> {
-                        Student s = new Student();
-                        s.setClerkUserId(clerkUserId);
-                        s.setEmail(t.getEmail());
-                        s.setName(t.getName());
-                        s.setRole(Role.STUDENT);
-                        studentRepo.save(s);
-                    }
-                );
-                teacherRepo.delete(t);
-                return findOrCreate(clerkUserId, email, name); // retry
+                teacherRepo.delete(teacher);
+                Student student = createStudent(clerkUserId, email, name);
+                return mapStudentToDto(student);
             }
 
-            if (email != null && !email.isBlank()) t.setEmail(email);
-            if (name != null && !name.isBlank()) {
-                t.setName(name);
-            } else if (("User".equals(t.getName()) || t.getName() == null) && email != null && email.contains("@")) {
-                t.setName(email.split("@")[0]);
-            }
-            teacherRepo.save(t);
-            return new UserDto(t.getId(), t.getEmail(), t.getName(), t.getRole(), null);
+            updateTeacherData(teacher, email, name);
+            teacher = teacherRepo.save(teacher);
+            return mapTeacherToDto(teacher);
         }
 
-        Optional<Student> sOpt = studentRepo.findByClerkUserId(clerkUserId);
-        if (sOpt.isPresent()) {
-            Student s = sOpt.get();
+        Optional<Student> existingStudent = studentRepo.findByClerkUserId(clerkUserId);
+        if (existingStudent.isPresent()) {
+            Student student = existingStudent.get();
 
-            // Check if we should promote them to Teacher
             if (targetRole == Role.TEACHER) {
-                teacherRepo.findByClerkUserId(clerkUserId).ifPresentOrElse(
-                    t -> {},
-                    () -> {
-                        Teacher t = new Teacher();
-                        t.setClerkUserId(clerkUserId);
-                        t.setEmail(s.getEmail());
-                        t.setName(s.getName());
-                        t.setRole(Role.TEACHER);
-                        teacherRepo.save(t);
-                    }
-                );
-                studentRepo.delete(s);
-                return findOrCreate(clerkUserId, email, name); // retry
+                studentRepo.delete(student);
+                Teacher teacher = createTeacher(clerkUserId, email, name);
+                return mapTeacherToDto(teacher);
             }
 
-            if (email != null && !email.isBlank()) s.setEmail(email);
-
-            if (name != null && !name.isBlank()) {
-                s.setName(name);
-            } else if (("User".equals(s.getName()) || s.getName() == null) && email != null && email.contains("@")) {
-                s.setName(email.split("@")[0]);
-            }
-
-            studentRepo.save(s);
-            return new UserDto(s.getId(), s.getEmail(), s.getName(), s.getRole(), s.getIndexNumber());
-        }
-
-        // 2. If new user, create appropriate record
-        String derivedName = (name != null && !name.isBlank()) ? name : "User";
-        if ("User".equals(derivedName) && email != null && email.contains("@")) {
-            derivedName = email.split("@")[0];
+            updateStudentData(student, email, name);
+            student = studentRepo.save(student);
+            return mapStudentToDto(student);
         }
 
         if (targetRole == Role.STUDENT) {
-            Student s = new Student();
-            s.setClerkUserId(clerkUserId);
-            s.setEmail(email != null ? email : clerkUserId + "@temporary.com");
-            s.setName(derivedName);
-            s.setRole(Role.STUDENT);
-
-            if (email != null && email.contains("@")) {
-                String local = email.split("@")[0];
-                if (!local.isBlank()) s.setIndexNumber(local);
-            }
-            s = studentRepo.save(s);
-            return new UserDto(s.getId(), s.getEmail(), s.getName(), s.getRole(), s.getIndexNumber());
+            Student student = createStudent(clerkUserId, email, name);
+            return mapStudentToDto(student);
         } else {
-            Teacher t = new Teacher();
-            t.setClerkUserId(clerkUserId);
-            t.setEmail(email != null ? email : clerkUserId + "@temporary.com");
-            t.setName(derivedName);
-            t.setRole(targetRole);
-            t = teacherRepo.save(t);
-            return new UserDto(t.getId(), t.getEmail(), t.getName(), t.getRole(), null);
+            Teacher teacher = createTeacher(clerkUserId, email, name);
+            return mapTeacherToDto(teacher);
         }
     }
 
@@ -119,20 +63,120 @@ public class UserService {
         return studentRepo.findByClerkUserId(uid);
     }
 
+    public Optional<Student> findStudentWithGroupsByUid(String uid) {
+        return studentRepo.findWithStudentGroupsByClerkUserId(uid);
+    }
+
     public Optional<Teacher> findTeacherByUid(String uid) {
         return teacherRepo.findByClerkUserId(uid);
     }
 
+    private Student createStudent(String clerkUserId, String email, String name) {
+        Student student = new Student();
+        student.setClerkUserId(clerkUserId);
+        student.setEmail(resolveEmail(clerkUserId, email));
+        student.setName(resolveName(email, name));
+        student.setRole(Role.STUDENT);
+        student.setIndexNumber(resolveIndexNumber(email));
+        return studentRepo.save(student);
+    }
+
+    private Teacher createTeacher(String clerkUserId, String email, String name) {
+        Teacher teacher = new Teacher();
+        teacher.setClerkUserId(clerkUserId);
+        teacher.setEmail(resolveEmail(clerkUserId, email));
+        teacher.setName(resolveName(email, name));
+        teacher.setRole(Role.TEACHER);
+        return teacherRepo.save(teacher);
+    }
+
+    private void updateStudentData(Student student, String email, String name) {
+        if (email != null && !email.isBlank()) {
+            student.setEmail(email);
+        }
+
+        student.setName(resolveName(student.getEmail(), name));
+        student.setIndexNumber(resolveIndexNumber(student.getEmail()));
+    }
+
+    private void updateTeacherData(Teacher teacher, String email, String name) {
+        if (email != null && !email.isBlank()) {
+            teacher.setEmail(email);
+        }
+
+        teacher.setName(resolveName(teacher.getEmail(), name));
+    }
+
+    private UserDto mapStudentToDto(Student student) {
+        return new UserDto(
+                student.getId(),
+                student.getEmail(),
+                student.getName(),
+                student.getRole(),
+                student.getIndexNumber()
+        );
+    }
+
+    private UserDto mapTeacherToDto(Teacher teacher) {
+        return new UserDto(
+                teacher.getId(),
+                teacher.getEmail(),
+                teacher.getName(),
+                teacher.getRole(),
+                null
+        );
+    }
+
+    private String resolveEmail(String clerkUserId, String email) {
+        if (email != null && !email.isBlank()) {
+            return email;
+        }
+        return clerkUserId + "@temporary.com";
+    }
+
+    private String resolveName(String email, String name) {
+        if (name != null && !name.isBlank()) {
+            return name;
+        }
+
+        if (email != null && email.contains("@")) {
+            String localPart = email.split("@")[0];
+            if (!localPart.isBlank()) {
+                return localPart;
+            }
+        }
+
+        return "User";
+    }
+
+    private String resolveIndexNumber(String email) {
+        if (email != null && email.contains("@")) {
+            String localPart = email.split("@")[0];
+            if (!localPart.isBlank()) {
+                return localPart;
+            }
+        }
+        return null;
+    }
+
     private Role roleFromEmail(String email) {
-        if (email == null) return Role.STUDENT;
+        if (email == null || email.isBlank()) {
+            return Role.STUDENT;
+        }
 
         String e = email.trim().toLowerCase();
-        // convention: students start with 's' followed by index number
-        if (e.startsWith("s")) return Role.STUDENT;
-        
-        // backup for specific domains if needed, but primary is 's' prefix
-        if (e.endsWith("@gmail.com")) return Role.TEACHER;
-        if (e.endsWith("@pjwstk.edu.pl") && !e.startsWith("s")) return Role.TEACHER;
+
+        if (e.startsWith("s")) {
+            return Role.STUDENT;
+        }
+
+        if (e.endsWith("@gmail.com")) {
+            return Role.TEACHER;
+        }
+
+        if (e.endsWith("@pjwstk.edu.pl") && !e.startsWith("s")) {
+            return Role.TEACHER;
+        }
 
         return Role.TEACHER;
     }

@@ -14,7 +14,6 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
-import com.notus.backend.users.Role;
 import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.util.List;
@@ -96,5 +95,8 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
             response.setStatus(HttpStatus.UNAUTHORIZED.value());
             response.getWriter().write("Niepoprawny token Clerk");
         }
+
     }
+
+
 }
