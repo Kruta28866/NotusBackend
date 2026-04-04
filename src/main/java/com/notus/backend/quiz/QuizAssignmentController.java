@@ -48,6 +48,12 @@ public class QuizAssignmentController {
         return service.getStudentAssignment(principal.getName(), id);
     }
 
+    /** Student: get complete review of their own submitted answers */
+    @GetMapping("/{id}/my-answers")
+    public MyQuizReviewDto getMyQuizReview(Principal principal, @PathVariable Long id) {
+        return service.getMyQuizReview(principal.getName(), id);
+    }
+
     /** Student: submit quiz answers */
     @PostMapping("/{id}/submit")
     public SubmitResultDto submit(Principal principal, @PathVariable Long id,

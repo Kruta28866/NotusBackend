@@ -9,9 +9,11 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.List;
 
 @RestController
@@ -48,6 +50,30 @@ public class StudentScheduleController {
         return scheduleService.getScheduleForStudent(student);
     }
 
+    @GetMapping("/api/student/schedule/range")
+    public List<Schedule> getStudentScheduleForRange(
+            Authentication auth,
+            HttpServletRequest request,
+            @RequestParam String start,
+            @RequestParam String end
+    ) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
+
+        UserDto user = userService.findOrCreate(uid, email, name);
+
+        if (user.role() != Role.STUDENT) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko student może pobrać swój plan");
+        }
+
+        Student student = userService.findStudentWithGroupsByUid(uid)
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.NOT_FOUND, "Nie znaleziono studenta dla zalogowanego użytkownika"));
+
+        return scheduleService.getScheduleForStudentInRange(student, Instant.parse(start), Instant.parse(end));
+    }
+
     @GetMapping("/api/student/schedule/today")
     public List<Schedule> getStudentTodaySchedule(
             Authentication auth,
@@ -74,4 +100,5 @@ public class StudentScheduleController {
 
         return scheduleService.getTodayScheduleForStudent(student);
     }
+
 }

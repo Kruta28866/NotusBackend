@@ -12,6 +12,8 @@ public interface QuizSubmissionRepository extends JpaRepository<QuizSubmission, 
 
     Optional<QuizSubmission> findByAssignmentAndStudent(QuizAssignment assignment, Student student);
 
+    List<QuizSubmission> findByStudent(Student student);
+
     boolean existsByAssignmentAndStudent(QuizAssignment assignment, Student student);
 
     List<QuizSubmission> findByStudentAndReviewedAtIsNotNullAndNotificationSeenFalse(Student student);

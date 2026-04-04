@@ -9,19 +9,19 @@ import java.util.List;
 @Repository
 public interface ScheduleRepository extends JpaRepository<Schedule, String> {
 
-    List<Schedule> findByDateBetweenAndTeacherEntityNameContainingIgnoreCase(
+    List<Schedule> findByDateBetweenAndTeacherEntityNameContainingIgnoreCaseOrderByTimeAsc(
             Instant start,
             Instant end,
             String teacherName
     );
 
-    List<Schedule> findByDateBetweenAndTeacherEntityId(
+    List<Schedule> findByDateBetweenAndTeacherEntityIdOrderByTimeAsc(
             Instant start,
             Instant end,
             Long teacherId
     );
 
-    List<Schedule> findByDateBetweenAndStudentGroupId(
+    List<Schedule> findByDateBetweenAndStudentGroupIdOrderByTimeAsc(
             Instant start,
             Instant end,
             Long groupId
@@ -29,7 +29,7 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
 
     List<Schedule> findByStudentGroupIdInOrderByDateAscTimeAsc(List<Long> groupIds);
 
-    List<Schedule> findByDateBetween(Instant start, Instant end);
+    List<Schedule> findByDateBetweenOrderByTimeAsc(Instant start, Instant end);
 
     List<Schedule> findByDateBetweenAndStudentGroupIdInOrderByTimeAsc(
             Instant start,

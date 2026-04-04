@@ -27,11 +27,23 @@ public class ScheduleService {
         Instant start = date.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant end = date.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
 
-        return scheduleRepository.findByDateBetween(start, end);
+        return scheduleRepository.findByDateBetweenOrderByTimeAsc(start, end);
     }
 
     public List<Schedule> getSchedule(Instant start, Instant end, Long teacherId, String teacherName, Long groupId) {
         return getFilteredSchedule(start, end, teacherId, teacherName, groupId);
+    }
+
+    public List<Schedule> getScheduleForStudentInRange(Student student, Instant start, Instant end) {
+        if (student.getStudentGroups() == null || student.getStudentGroups().isEmpty()) {
+            return List.of();
+        }
+        List<Long> groupIds = student.getStudentGroups()
+                .stream()
+                .map(group -> group.getId())
+                .distinct()
+                .toList();
+        return scheduleRepository.findByDateBetweenAndStudentGroupIdInOrderByTimeAsc(start, end, groupIds);
     }
 
     public List<Schedule> getScheduleForStudent(Student student) {
@@ -56,7 +68,7 @@ public class ScheduleService {
             Long groupId
     ) {
         if (teacherId != null) {
-            List<Schedule> byTeacherId = scheduleRepository.findByDateBetweenAndTeacherEntityId(start, end, teacherId);
+            List<Schedule> byTeacherId = scheduleRepository.findByDateBetweenAndTeacherEntityIdOrderByTimeAsc(start, end, teacherId);
             if (!byTeacherId.isEmpty()) {
                 return byTeacherId;
             }
@@ -64,17 +76,17 @@ public class ScheduleService {
 
         if (teacherName != null && !teacherName.isBlank()) {
             List<Schedule> byTeacherName =
-                    scheduleRepository.findByDateBetweenAndTeacherEntityNameContainingIgnoreCase(start, end, teacherName);
+                    scheduleRepository.findByDateBetweenAndTeacherEntityNameContainingIgnoreCaseOrderByTimeAsc(start, end, teacherName);
             if (!byTeacherName.isEmpty()) {
                 return byTeacherName;
             }
         }
 
         if (groupId != null) {
-            return scheduleRepository.findByDateBetweenAndStudentGroupId(start, end, groupId);
+            return scheduleRepository.findByDateBetweenAndStudentGroupIdOrderByTimeAsc(start, end, groupId);
         }
 
-        return scheduleRepository.findByDateBetween(start, end);
+        return scheduleRepository.findByDateBetweenOrderByTimeAsc(start, end);
     }
 
     public List<Schedule> getTodayScheduleForStudent(Student student) {

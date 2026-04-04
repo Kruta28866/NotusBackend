@@ -77,6 +77,7 @@ public class AttendanceService {
         session.setSchedule(schedule);
         session.setShortCode(generateShortCode());
         session.setActive(true);
+        session.setTitle(schedule.getSubject());
 
         Instant createdAt = schedule.getDate() != null ? schedule.getDate() : Instant.now();
         session.setCreatedAt(createdAt);
@@ -157,7 +158,7 @@ public class AttendanceService {
         if (existing.isPresent()) {
             log.info("Student {} already checked in for session {}", studentUid, s.getId());
             AttendanceRecord existingRecord = existing.get();
-            return new CheckInResponse(existingRecord.getSessionId(), s.getSchedule().getSubject(), studentUid, student.getName(), student.getIndexNumber(), existingRecord.getCheckedInAt(), true, s.getSchedule().getDate());
+            return new CheckInResponse(existingRecord.getSessionId(), s.getSchedule().getSubject(), studentUid, student.getName(), student.getIndexNumber(), existingRecord.getCheckedInAt(), true, s.getEndsAt());
         }
 
         AttendanceRecord r = new AttendanceRecord();
@@ -168,7 +169,7 @@ public class AttendanceService {
         r = recordRepo.save(r);
         log.info("Student {} successfully checked in for session {}", studentUid, s.getId());
 
-        return new CheckInResponse(r.getSessionId(), s.getSchedule().getSubject(), studentUid, student.getName(), student.getIndexNumber(), r.getCheckedInAt(), false, s.getSchedule().getDate());
+        return new CheckInResponse(r.getSessionId(), s.getSchedule().getSubject(), studentUid, student.getName(), student.getIndexNumber(), r.getCheckedInAt(), false, s.getEndsAt());
     }
 
     @Transactional(readOnly = true)

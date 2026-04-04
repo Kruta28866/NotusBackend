@@ -28,7 +28,7 @@ public class AttendanceSession {
     private Teacher teacher;
 
     @ManyToOne(fetch = FetchType.EAGER)
-    @JoinColumn(name = "schedule_id", nullable = false)
+    @JoinColumn(name = "schedule_id")
     private Schedule schedule;
 
     @Column(name = "short_code", unique = true, length = 8)
@@ -43,15 +43,13 @@ public class AttendanceSession {
     @Column(name = "ends_at")
     private Instant endsAt;
 
+    @Column(name = "title")
+    private String title;
+
     @PrePersist
     void prePersist() {
         if (createdAt == null) {
             createdAt = Instant.now();
         }
-    }
-
-    @Transient
-    public String getTitle() {
-        return schedule != null ? schedule.getSubject() : null;
     }
 }

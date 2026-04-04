@@ -38,7 +38,7 @@ public class QuizSubmission {
     private int total;
 
     /** True while there are OPEN questions not yet graded by the teacher */
-    @Column(name = "pending_open_review", nullable = false)
+    @Column(name = "pending_open_review", nullable = false, columnDefinition = "boolean not null default false")
     private boolean pendingOpenReview = false;
 
     /** Set when teacher finishes reviewing all OPEN answers */
@@ -46,6 +46,6 @@ public class QuizSubmission {
     private Instant reviewedAt;
 
     /** True once the student has acknowledged the review notification */
-    @Column(name = "notification_seen", nullable = false)
+    @Column(name = "notification_seen", nullable = false, columnDefinition = "boolean not null default false")
     private boolean notificationSeen = false;
 }

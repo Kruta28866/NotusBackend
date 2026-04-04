@@ -230,6 +230,39 @@ public class QuizAssignmentService {
                 .toList();
     }
 
+    // --- Student: get full review of their answers ---
+    @Transactional(readOnly = true)
+    public MyQuizReviewDto getMyQuizReview(String studentClerkId, Long assignmentId) {
+        Student student = getStudent(studentClerkId);
+        QuizAssignment assignment = getAssignment(assignmentId);
+        Schedule schedule = scheduleRepository.findById(assignment.getScheduleId()).orElse(null);
+
+        QuizSubmission submission = submissionRepository
+                .findByAssignmentAndStudent(assignment, student)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Brak zgłoszenia dla tego quizu"));
+
+        List<QuizAnswer> answers = answerRepository.findBySubmission(submission);
+        List<MyQuizReviewAnswerDto> dtos = answers.stream().map(a -> new MyQuizReviewAnswerDto(
+                a.getQuestion().getId(),
+                a.getQuestion().getQuestionText(),
+                a.getQuestion().getType(),
+                a.getQuestion().getOptions(),
+                a.getQuestion().getCorrectAnswer(),
+                a.getAnswerText(),
+                a.getCorrect()
+        )).toList();
+
+        return new MyQuizReviewDto(
+                assignment.getId(),
+                assignment.getQuiz().getTitle(),
+                schedule != null ? schedule.getSubject() : "–",
+                submission.getScore(),
+                submission.getTotal(),
+                submission.isPendingOpenReview(),
+                dtos
+        );
+    }
+
     // --- Teacher: submit review marks ---
 
     @Transactional
