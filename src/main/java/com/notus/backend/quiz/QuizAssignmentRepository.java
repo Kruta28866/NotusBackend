@@ -17,4 +17,5 @@ public interface QuizAssignmentRepository extends JpaRepository<QuizAssignment, 
     boolean existsByQuizIdAndScheduleId(Long quizId, String scheduleId);
 
     Optional<QuizAssignment> findBySessionIdAndActiveTrue(Long sessionId);
+    List<QuizAssignment> findByQuiz(Quiz quiz);
 }

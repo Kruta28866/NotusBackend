@@ -1,5 +1,6 @@
 package com.notus.backend.quiz;
 
+import com.notus.backend.quiz.dto.QuizDetailsDto;
 import com.notus.backend.quiz.dto.QuizResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -55,9 +56,17 @@ public class QuizController {
     }
 
     @GetMapping("/{id}")
-    public Quiz getQuizDetails(Principal principal, @PathVariable Long id) {
+    public QuizDetailsDto getQuizDetails(Principal principal, @PathVariable Long id) {
         String uid = principal.getName();
         return quizService.getQuizDetails(uid, id);
+    }
+
+    @PutMapping("/{id}")
+    public QuizDetailsDto updateQuiz(Principal principal,
+                                     @PathVariable Long id,
+                                     @RequestBody QuizResponse quizResponse) {
+        String uid = principal.getName();
+        return quizService.updateQuiz(uid, id, quizResponse);
     }
 
     @DeleteMapping("/{id}")
@@ -69,7 +78,7 @@ public class QuizController {
     @GetMapping(value = "/{id}/pdf", produces = MediaType.APPLICATION_PDF_VALUE)
     public ResponseEntity<byte[]> downloadQuizPdf(Principal principal, @PathVariable Long id) throws IOException {
         String uid = principal.getName();
-        Quiz quiz = quizService.getQuizDetails(uid, id);
+        QuizDetailsDto quiz = quizService.getQuizDetails(uid, id);
 
         byte[] pdfBytes = generateQuizPdf(quiz);
 
@@ -79,14 +88,12 @@ public class QuizController {
                 .body(pdfBytes);
     }
 
-    private byte[] generateQuizPdf(Quiz quiz) throws IOException {
+    private byte[] generateQuizPdf(QuizDetailsDto quiz) throws IOException {
         try (PDDocument doc = new PDDocument(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             PDType1Font fontBold = new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
             PDType1Font fontRegular = new PDType1Font(Standard14Fonts.FontName.HELVETICA);
 
             float margin = 50;
-            float pageWidth = PDRectangle.A4.getWidth();
-            float usableWidth = pageWidth - 2 * margin;
             float yStart = PDRectangle.A4.getHeight() - margin;
             float lineHeight = 16;
             float y = yStart;
@@ -95,24 +102,23 @@ public class QuizController {
             doc.addPage(page);
             PDPageContentStream cs = new PDPageContentStream(doc, page);
 
-            // Title
             cs.beginText();
             cs.setFont(fontBold, 18);
             cs.newLineAtOffset(margin, y);
-            cs.showText(sanitize(quiz.getTitle()));
+            cs.showText(sanitize(quiz.title()));
             cs.endText();
             y -= lineHeight * 2;
 
-            if (quiz.getDescription() != null && !quiz.getDescription().isBlank()) {
+            if (quiz.description() != null && !quiz.description().isBlank()) {
                 cs.beginText();
                 cs.setFont(fontRegular, 11);
                 cs.newLineAtOffset(margin, y);
-                cs.showText(sanitize(quiz.getDescription()));
+                cs.showText(sanitize(quiz.description()));
                 cs.endText();
                 y -= lineHeight * 1.5f;
             }
 
-            List<QuizQuestion> questions = quiz.getQuestions();
+            List<QuizQuestion> questions = quiz.questions();
             for (int i = 0; i < questions.size(); i++) {
                 QuizQuestion q = questions.get(i);
 
@@ -124,7 +130,6 @@ public class QuizController {
                     y = yStart;
                 }
 
-                // Question text
                 cs.beginText();
                 cs.setFont(fontBold, 12);
                 cs.newLineAtOffset(margin, y);
@@ -132,7 +137,6 @@ public class QuizController {
                 cs.endText();
                 y -= lineHeight;
 
-                // Options (for CLOSED type)
                 if (q.getOptions() != null && !q.getOptions().isEmpty()) {
                     String[] letters = {"A", "B", "C", "D", "E"};
                     for (int j = 0; j < q.getOptions().size(); j++) {
@@ -143,7 +147,7 @@ public class QuizController {
                             cs = new PDPageContentStream(doc, page);
                             y = yStart;
                         }
-                        String letter = j < letters.length ? letters[j] : String.valueOf((char)('A' + j));
+                        String letter = j < letters.length ? letters[j] : String.valueOf((char) ('A' + j));
                         cs.beginText();
                         cs.setFont(fontRegular, 11);
                         cs.newLineAtOffset(margin + 16, y);
@@ -153,7 +157,6 @@ public class QuizController {
                     }
                 }
 
-                // Correct answer
                 if (q.getCorrectAnswer() != null && !q.getCorrectAnswer().isBlank()) {
                     cs.beginText();
                     cs.setFont(fontBold, 10);

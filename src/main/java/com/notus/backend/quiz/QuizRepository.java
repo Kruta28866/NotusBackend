@@ -6,4 +6,5 @@ import java.util.List;
 
 public interface QuizRepository extends JpaRepository<Quiz, Long> {
     List<Quiz> findByTeacher(Teacher teacher);
+    List<Quiz> findByTeacherAndArchivedFalse(Teacher teacher);
 }

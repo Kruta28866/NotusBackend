@@ -33,6 +33,15 @@ public class Quiz {
     @Column(name = "created_at")
     private Instant createdAt = Instant.now();
 
+    @Column(nullable = false, columnDefinition = "integer default 1")
+    private int version = 1;
+
+    @Column(name = "parent_quiz_id")
+    private Long parentQuizId;
+
+    @Column(nullable = false, columnDefinition = "boolean default false")
+    private boolean archived = false;
+
     @OneToMany(mappedBy = "quiz", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<QuizQuestion> questions = new ArrayList<>();
 
