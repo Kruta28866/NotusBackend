@@ -8,6 +8,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -44,7 +45,9 @@ class ScheduleServiceWriteTest {
         when(scheduleRepository.findById("x")).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> scheduleService.getById("x"))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.NOT_FOUND));
     }
 
     @Test
@@ -77,7 +80,9 @@ class ScheduleServiceWriteTest {
         );
 
         assertThatThrownBy(() -> scheduleService.createSchedule(req, "unknown"))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.FORBIDDEN));
     }
 
     @Test
@@ -107,7 +112,31 @@ class ScheduleServiceWriteTest {
         );
 
         assertThatThrownBy(() -> scheduleService.updateSchedule("x", req))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    @Test
+    void updateSchedule_preservesTeacherEntity() {
+        Teacher teacher = new Teacher();
+        teacher.setId(5L);
+        teacher.setName("Original Teacher");
+
+        Schedule existing = new Schedule();
+        existing.setId("id2");
+        existing.setSubject("Old");
+        existing.setTeacherEntity(teacher);
+        when(scheduleRepository.findById("id2")).thenReturn(Optional.of(existing));
+        when(scheduleRepository.save(any(Schedule.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        CreateScheduleRequest req = new CreateScheduleRequest(
+                "New Subject", Instant.now(), "10:00 - 11:30", "202", "Ćwiczenia", null, null
+        );
+
+        Schedule result = scheduleService.updateSchedule("id2", req);
+
+        assertThat(result.getTeacherEntity()).isSameAs(teacher);
     }
 
     @Test
@@ -124,6 +153,8 @@ class ScheduleServiceWriteTest {
         when(scheduleRepository.existsById("x")).thenReturn(false);
 
         assertThatThrownBy(() -> scheduleService.deleteSchedule("x"))
-                .isInstanceOf(ResponseStatusException.class);
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.NOT_FOUND));
     }
 }

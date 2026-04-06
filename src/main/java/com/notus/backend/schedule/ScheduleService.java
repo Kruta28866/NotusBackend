@@ -155,6 +155,7 @@ public class ScheduleService {
         Schedule schedule = scheduleRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
 
+        // Full-replacement PUT semantics: null studentGroupId clears any existing group
         StudentGroup group = null;
         if (req.studentGroupId() != null) {
             group = studentGroupRepository.findById(req.studentGroupId())
@@ -168,6 +169,7 @@ public class ScheduleService {
         schedule.setType(req.type());
         schedule.setColor(req.color() != null ? req.color() : "primary");
         schedule.setStudentGroup(group);
+        // teacherEntity is intentionally immutable after creation — not updated here
 
         return scheduleRepository.save(schedule);
     }
