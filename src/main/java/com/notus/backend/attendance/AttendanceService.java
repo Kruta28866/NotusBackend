@@ -78,6 +78,7 @@ public class AttendanceService {
         session.setShortCode(generateShortCode());
         session.setActive(true);
         session.setTitle(schedule.getSubject());
+        session.setEndsAt(computeEndsAt(schedule));
 
         Instant createdAt = schedule.getDate() != null ? schedule.getDate() : Instant.now();
         session.setCreatedAt(createdAt);
@@ -187,6 +188,40 @@ public class AttendanceService {
                     return new CheckInResponse(r.getSessionId(), session.getSchedule().getSubject(), student.getClerkUserId(), student.getName(), student.getIndexNumber(), r.getCheckedInAt(), false, session.getSchedule().getDate());
                 })
                 .toList();
+    }
+
+    /**
+     * Parses the end time from a schedule time string ("HH:mm - HH:mm") and
+     * combines it with the schedule date to produce a wall-clock Instant in
+     * Europe/Warsaw timezone. Returns null if the time string is null, blank,
+     * or unparseable.
+     */
+    private Instant computeEndsAt(Schedule schedule) {
+        if (schedule.getTime() == null || schedule.getTime().isBlank()) {
+            return null;
+        }
+        if (schedule.getDate() == null) {
+            return null;
+        }
+        try {
+            String[] parts = schedule.getTime().split(" - ");
+            if (parts.length < 2) return null;
+            String[] hm = parts[1].trim().split(":");
+            if (hm.length < 2) return null;
+            int hour = Integer.parseInt(hm[0].trim());
+            int minute = Integer.parseInt(hm[1].trim());
+
+            java.time.ZoneId warsaw = java.time.ZoneId.of("Europe/Warsaw");
+            java.time.LocalDate day = schedule.getDate()
+                    .atZone(java.time.ZoneOffset.UTC)
+                    .toLocalDate();
+            return day.atTime(hour, minute)
+                    .atZone(warsaw)
+                    .toInstant();
+        } catch (Exception e) {
+            log.warn("Could not parse endsAt from schedule time '{}': {}", schedule.getTime(), e.getMessage());
+            return null;
+        }
     }
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();

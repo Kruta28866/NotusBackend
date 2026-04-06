@@ -12,6 +12,7 @@ import com.notus.backend.users.Teacher;
 import com.notus.backend.users.TeacherRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -192,5 +193,70 @@ class AttendanceServiceTest {
         assertEquals("Jan Kowalski", response.studentName());
 
         verify(recordRepo, never()).save(any(AttendanceRecord.class));
+    }
+
+    @Test
+    void createSession_withValidTime_setsEndsAt() {
+        Teacher teacher = new Teacher();
+        teacher.setId(1L);
+        teacher.setClerkUserId("uid_teacher");
+
+        Schedule schedule = new Schedule();
+        schedule.setId("sched_1");
+        schedule.setSubject("Math");
+        schedule.setRoom("101");
+        // date = 2026-04-06 midnight UTC → 2026-04-06T00:00:00Z
+        schedule.setDate(Instant.parse("2026-04-06T00:00:00Z"));
+        schedule.setTime("10:15 - 12:00");
+        schedule.setTeacherEntity(teacher);
+
+        when(teacherRepo.findByClerkUserId("uid_teacher")).thenReturn(Optional.of(teacher));
+        when(scheduleRepository.findById("sched_1")).thenReturn(Optional.of(schedule));
+        when(sessionRepo.save(any(AttendanceSession.class))).thenAnswer(inv -> {
+            AttendanceSession s = inv.getArgument(0);
+            s.setId(42L);
+            return s;
+        });
+
+        CreateSessionRequest req = new CreateSessionRequest("sched_1");
+        attendanceService.createSession("uid_teacher", req);
+
+        ArgumentCaptor<AttendanceSession> captor = ArgumentCaptor.forClass(AttendanceSession.class);
+        verify(sessionRepo).save(captor.capture());
+        AttendanceSession saved = captor.getValue();
+
+        assertNotNull(saved.getEndsAt());
+        // 12:00 Warsaw on 2026-04-06 = 10:00 UTC (CEST = UTC+2)
+        assertEquals(Instant.parse("2026-04-06T10:00:00Z"), saved.getEndsAt());
+    }
+
+    @Test
+    void createSession_withNullTime_endsAtIsNull() {
+        Teacher teacher = new Teacher();
+        teacher.setId(1L);
+        teacher.setClerkUserId("uid_teacher");
+
+        Schedule schedule = new Schedule();
+        schedule.setId("sched_2");
+        schedule.setSubject("Math");
+        schedule.setRoom("101");
+        schedule.setDate(Instant.parse("2026-04-06T00:00:00Z"));
+        schedule.setTime(null); // no time set
+        schedule.setTeacherEntity(teacher);
+
+        when(teacherRepo.findByClerkUserId("uid_teacher")).thenReturn(Optional.of(teacher));
+        when(scheduleRepository.findById("sched_2")).thenReturn(Optional.of(schedule));
+        when(sessionRepo.save(any(AttendanceSession.class))).thenAnswer(inv -> {
+            AttendanceSession s = inv.getArgument(0);
+            s.setId(43L);
+            return s;
+        });
+
+        CreateSessionRequest req = new CreateSessionRequest("sched_2");
+        attendanceService.createSession("uid_teacher", req);
+
+        ArgumentCaptor<AttendanceSession> captor = ArgumentCaptor.forClass(AttendanceSession.class);
+        verify(sessionRepo).save(captor.capture());
+        assertNull(captor.getValue().getEndsAt());
     }
 }
