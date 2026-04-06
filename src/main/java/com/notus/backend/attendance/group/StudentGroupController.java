@@ -14,6 +14,8 @@ public class StudentGroupController {
 
     private final StudentGroupRepository studentGroupRepository;
 
+    // Open to all authenticated users — students also need this for schedule display.
+    // Access is gated by the global /api/** authenticated() rule in SecurityConfig.
     @GetMapping
     public List<StudentGroup> getAll() {
         return studentGroupRepository.findAll();

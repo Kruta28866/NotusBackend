@@ -170,6 +170,7 @@ public class ScheduleService {
         schedule.setColor(req.color() != null ? req.color() : "primary");
         schedule.setStudentGroup(group);
         // teacherEntity is intentionally immutable after creation — not updated here
+        // TODO: enforce ownership — only the creating teacher should be allowed to modify
 
         return scheduleRepository.save(schedule);
     }
@@ -179,6 +180,7 @@ public class ScheduleService {
         if (!scheduleRepository.existsById(id)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found");
         }
+        // TODO: enforce ownership — only the creating teacher should be allowed to delete
         scheduleRepository.deleteById(id);
     }
 }
