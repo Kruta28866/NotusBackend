@@ -9,6 +9,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.web.bind.annotation.ResponseStatus;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -72,5 +73,61 @@ public class ScheduleController {
                 teacherName,
                 groupId
         );
+    }
+
+    @GetMapping("/{id}")
+    public Schedule getById(@PathVariable String id) {
+        return scheduleService.getById(id);
+    }
+
+    @PostMapping
+    @ResponseStatus(HttpStatus.CREATED)
+    public Schedule create(
+            Authentication auth,
+            HttpServletRequest request,
+            @RequestBody CreateScheduleRequest req
+    ) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
+        UserDto user = userService.findOrCreate(uid, email, name);
+        if (user.role() != Role.TEACHER && user.role() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can create schedule entries");
+        }
+        return scheduleService.createSchedule(req, uid);
+    }
+
+    @PutMapping("/{id}")
+    public Schedule update(
+            Authentication auth,
+            HttpServletRequest request,
+            @PathVariable String id,
+            @RequestBody CreateScheduleRequest req
+    ) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
+        UserDto user = userService.findOrCreate(uid, email, name);
+        if (user.role() != Role.TEACHER && user.role() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can update schedule entries");
+        }
+        return scheduleService.updateSchedule(id, req);
+    }
+
+    @DeleteMapping("/{id}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(
+            Authentication auth,
+            HttpServletRequest request,
+            @PathVariable String id
+    ) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
+        UserDto user = userService.findOrCreate(uid, email, name);
+        if (user.role() != Role.TEACHER && user.role() != Role.ADMIN) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can delete schedule entries");
+        }
+        scheduleService.deleteSchedule(id);
     }
 }
