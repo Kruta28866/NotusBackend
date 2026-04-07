@@ -120,7 +120,8 @@ public class AttendanceService {
         long expiresAt = Instant.now().getEpochSecond() + qrTokenService.ttlSeconds();
         String pngBase64 = qrImageService.toPngBase64(qrToken, 320);
 
-        return new QrResponse(s.getId(), qrToken, pngBase64, expiresAt, s.getShortCode());
+        long sessionEndsAt = s.getEndsAt() != null ? s.getEndsAt().getEpochSecond() : expiresAt;
+        return new QrResponse(s.getId(), qrToken, pngBase64, expiresAt, s.getShortCode(), sessionEndsAt);
     }
 
     @Transactional
