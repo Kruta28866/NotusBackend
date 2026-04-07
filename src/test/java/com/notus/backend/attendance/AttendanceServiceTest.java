@@ -4,6 +4,7 @@ import com.notus.backend.attendance.dto.CheckInRequest;
 import com.notus.backend.attendance.dto.CheckInResponse;
 import com.notus.backend.attendance.dto.CreateSessionRequest;
 import com.notus.backend.attendance.dto.CreateSessionResponse;
+import com.notus.backend.attendance.dto.QrResponse;
 import com.notus.backend.schedule.Schedule;
 import com.notus.backend.schedule.ScheduleRepository;
 import com.notus.backend.users.Student;
@@ -258,5 +259,43 @@ class AttendanceServiceTest {
         ArgumentCaptor<AttendanceSession> captor = ArgumentCaptor.forClass(AttendanceSession.class);
         verify(sessionRepo).save(captor.capture());
         assertNull(captor.getValue().getEndsAt());
+    }
+
+    @Test
+    void generateQr_withEndsAt_returnsSessionEndsAt() {
+        Teacher teacher = new Teacher(); teacher.setId(1L); teacher.setClerkUserId("uid");
+        AttendanceSession session = new AttendanceSession();
+        session.setId(7L); session.setActive(true); session.setShortCode("XYZ");
+        Instant endsAt = Instant.parse("2026-04-07T12:00:00Z");
+        session.setEndsAt(endsAt);
+
+        when(teacherRepo.findByClerkUserId("uid")).thenReturn(Optional.of(teacher));
+        when(sessionRepo.findByIdAndTeacher(7L, teacher)).thenReturn(Optional.of(session));
+        when(qrTokenService.createToken(7L)).thenReturn("tok");
+        when(qrTokenService.ttlSeconds()).thenReturn(300L);
+        when(qrImageService.toPngBase64("tok", 320)).thenReturn("base64==");
+
+        QrResponse resp = attendanceService.generateQr("uid", 7L);
+
+        assertEquals(endsAt.getEpochSecond(), resp.sessionEndsAt());
+    }
+
+    @Test
+    void generateQr_withNullEndsAt_fallsBackToExpiresAt() {
+        Teacher teacher = new Teacher(); teacher.setId(1L); teacher.setClerkUserId("uid");
+        AttendanceSession session = new AttendanceSession();
+        session.setId(8L); session.setActive(true); session.setShortCode("XYZ");
+        session.setEndsAt(null);
+
+        when(teacherRepo.findByClerkUserId("uid")).thenReturn(Optional.of(teacher));
+        when(sessionRepo.findByIdAndTeacher(8L, teacher)).thenReturn(Optional.of(session));
+        when(qrTokenService.createToken(8L)).thenReturn("tok");
+        when(qrTokenService.ttlSeconds()).thenReturn(300L);
+        when(qrImageService.toPngBase64("tok", 320)).thenReturn("base64==");
+
+        QrResponse resp = attendanceService.generateQr("uid", 8L);
+
+        assertTrue(resp.sessionEndsAt() >= Instant.now().getEpochSecond() + 290);
+        assertEquals(resp.expiresAtEpochSeconds(), resp.sessionEndsAt());
     }
 }
