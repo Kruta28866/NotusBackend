@@ -36,4 +36,6 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
             Instant end,
             List<Long> groupIds
     );
+
+    long countByStudentGroup(com.notus.backend.attendance.group.StudentGroup group);
 }

@@ -57,6 +57,46 @@ public class ScheduleController {
         return scheduleService.getScheduleByDay(LocalDate.parse(date));
     }
 
+    @GetMapping("/day/{date}")
+    public List<Schedule> getScheduleByDayPath(
+            Authentication auth,
+            HttpServletRequest request,
+            @PathVariable String date
+    ) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
+        UserDto user = userService.findOrCreate(uid, email, name);
+
+        java.time.Instant start = java.time.LocalDate.parse(date).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+        java.time.Instant end = java.time.LocalDate.parse(date).plusDays(1).atStartOfDay(java.time.ZoneId.systemDefault()).toInstant();
+
+        if (user.role() == Role.STUDENT) {
+            com.notus.backend.users.Student student = userService.findStudentWithGroupsByUid(uid).orElse(null);
+            return scheduleService.getScheduleForStudentInRange(student, start, end);
+        } else {
+            return scheduleService.getSchedule(start, end, user.id(), null, null);
+        }
+    }
+
+    @GetMapping("/next")
+    public Schedule getNextSchedule(
+            Authentication auth,
+            HttpServletRequest request
+    ) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
+        UserDto user = userService.findOrCreate(uid, email, name);
+
+        if (user.role() == Role.STUDENT) {
+            com.notus.backend.users.Student student = userService.findStudentWithGroupsByUid(uid).orElse(null);
+            return scheduleService.getNextSchedule(null, null, null, student);
+        } else {
+            return scheduleService.getNextSchedule(user.id(), null, null, null);
+        }
+    }
+
     @GetMapping
     public List<Schedule> getSchedule(
             @RequestParam String start,

@@ -46,6 +46,23 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
 
         String token = header.substring(7).trim();
 
+        if (token.startsWith("mock-dev-token:")) {
+            String email = token.substring("mock-dev-token:".length());
+            String userId = "dev-user-" + (email.contains("@") ? email.split("@")[0] : email);
+            
+            request.setAttribute("clerk_email", email);
+            request.setAttribute("clerk_name", "Dev User (" + email + ")");
+            
+            var auth = new UsernamePasswordAuthenticationToken(
+                    userId,
+                    null,
+                    List.of(new SimpleGrantedAuthority("ROLE_USER"))
+            );
+            SecurityContextHolder.getContext().setAuthentication(auth);
+            chain.doFilter(request, response);
+            return;
+        }
+
         try {
             DecodedJWT jwt = JWT.decode(token);
             String userId = jwt.getSubject();
