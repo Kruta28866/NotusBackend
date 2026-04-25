@@ -10,10 +10,12 @@ public class UserService {
 
     private final StudentRepository studentRepo;
     private final TeacherRepository teacherRepo;
+    private final com.notus.backend.attendance.group.StudentGroupRepository studentGroupRepo;
 
-    public UserService(StudentRepository studentRepo, TeacherRepository teacherRepo) {
+    public UserService(StudentRepository studentRepo, TeacherRepository teacherRepo, com.notus.backend.attendance.group.StudentGroupRepository studentGroupRepo) {
         this.studentRepo = studentRepo;
         this.teacherRepo = teacherRepo;
+        this.studentGroupRepo = studentGroupRepo;
     }
 
     @Transactional
@@ -78,6 +80,12 @@ public class UserService {
         student.setName(resolveName(email, name));
         student.setRole(Role.STUDENT);
         student.setIndexNumber(resolveIndexNumber(email));
+        
+        // Auto-assign to default group if exists
+        studentGroupRepo.findByCode("INF-2024-SEM2").ifPresent(group -> {
+            student.setStudentGroups(java.util.List.of(group));
+        });
+        
         return studentRepo.save(student);
     }
 

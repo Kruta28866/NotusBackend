@@ -44,6 +44,45 @@ public class ScheduleService {
         return getFilteredSchedule(start, end, teacherId, teacherName, groupId);
     }
 
+    public Schedule getNextSchedule(Long teacherId, String teacherName, Long groupId, Student student) {
+        Instant now = Instant.now();
+        Instant end = now.plus(java.time.Duration.ofDays(7));
+        
+        List<Schedule> schedules;
+        if (student != null) {
+            schedules = getScheduleForStudentInRange(student, now.minus(java.time.Duration.ofDays(1)), end);
+        } else {
+            schedules = getFilteredSchedule(now.minus(java.time.Duration.ofDays(1)), end, teacherId, teacherName, groupId);
+        }
+
+        java.time.LocalTime currentTime = java.time.LocalTime.now();
+        LocalDate currentDate = LocalDate.now();
+
+        for (Schedule s : schedules) {
+            LocalDate sDate = LocalDate.ofInstant(s.getDate(), ZoneId.systemDefault());
+            if (sDate.isBefore(currentDate)) continue;
+
+            if (sDate.isEqual(currentDate)) {
+                if (s.getTime() != null && s.getTime().contains(" - ")) {
+                    String[] parts = s.getTime().split(" - ");
+                    if (parts.length == 2) {
+                        try {
+                            java.time.LocalTime endTime = java.time.LocalTime.parse(parts[1]);
+                            if (endTime.isAfter(currentTime)) {
+                                return s;
+                            }
+                        } catch (Exception e) {
+                            // ignore parse error
+                        }
+                    }
+                }
+            } else {
+                return s; 
+            }
+        }
+        return null;
+    }
+
     public List<Schedule> getScheduleForStudentInRange(Student student, Instant start, Instant end) {
         if (student.getStudentGroups() == null || student.getStudentGroups().isEmpty()) {
             return List.of();
