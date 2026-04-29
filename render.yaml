@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: notus-backend
+    runtime: docker
+    plan: free
+    healthCheckPath: /api/test
+    envVars:
+      - key: DB_PASSWORD
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: QR_HMAC_SECRET
+        generateValue: true
+      - key: CORS_ALLOWED_ORIGIN_PATTERNS
+        value: https://your-vercel-app.vercel.app

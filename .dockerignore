@@ -1,0 +1,12 @@
+target
+.git
+.env
+.env.*
+!.env.example
+*.log
+logs.txt
+backend_startup.log
+backend_logs.txt
+.DS_Store
+Dockerfile
+docker-compose.yml
