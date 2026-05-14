@@ -42,7 +42,7 @@ public class ScheduleController {
 
         UserDto user = userService.findOrCreate(uid, email, name);
 
-        if (user.role() != Role.TEACHER && user.role() != Role.ADMIN) {
+        if (user.role() != Role.TEACHER) {
             throw new ResponseStatusException(
                     HttpStatus.FORBIDDEN,
                     "Tylko nauczyciel może pobrać swój plan"
@@ -130,7 +130,7 @@ public class ScheduleController {
         String email = (String) request.getAttribute("clerk_email");
         String name = (String) request.getAttribute("clerk_name");
         UserDto user = userService.findOrCreate(uid, email, name);
-        if (user.role() != Role.TEACHER && user.role() != Role.ADMIN) {
+        if (user.role() != Role.TEACHER) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can create schedule entries");
         }
         return scheduleService.createSchedule(req, uid);
@@ -147,7 +147,7 @@ public class ScheduleController {
         String email = (String) request.getAttribute("clerk_email");
         String name = (String) request.getAttribute("clerk_name");
         UserDto user = userService.findOrCreate(uid, email, name);
-        if (user.role() != Role.TEACHER && user.role() != Role.ADMIN) {
+        if (user.role() != Role.TEACHER) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can update schedule entries");
         }
         return scheduleService.updateSchedule(id, req);
@@ -164,7 +164,7 @@ public class ScheduleController {
         String email = (String) request.getAttribute("clerk_email");
         String name = (String) request.getAttribute("clerk_name");
         UserDto user = userService.findOrCreate(uid, email, name);
-        if (user.role() != Role.TEACHER && user.role() != Role.ADMIN) {
+        if (user.role() != Role.TEACHER) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can delete schedule entries");
         }
         scheduleService.deleteSchedule(id);

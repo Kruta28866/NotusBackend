@@ -2,6 +2,9 @@ package com.notus.backend.auth;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.interfaces.DecodedJWT;
+import com.notus.backend.users.Role;
+import com.notus.backend.users.UserDto;
+import com.notus.backend.users.UserService;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
@@ -16,15 +19,20 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.filter.OncePerRequestFilter;
 import org.springframework.stereotype.Component;
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 @Component
 public class ClerkAuthFilter extends OncePerRequestFilter {
 
     private static final Logger log = LoggerFactory.getLogger(ClerkAuthFilter.class);
+    private final UserService userService;
+    private final AuthTokenService authTokenService;
 
-    private static final List<String> ALLOWED_DOMAINS =
-            List.of("@pjwstk.edu.pl", "@gmail.com");
+    public ClerkAuthFilter(UserService userService, AuthTokenService authTokenService) {
+        this.userService = userService;
+        this.authTokenService = authTokenService;
+    }
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
@@ -47,7 +55,10 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
         String token = header.substring(7).trim();
 
         if (token.startsWith("mock-dev-token:")) {
-            String email = token.substring("mock-dev-token:".length());
+            String payload = token.substring("mock-dev-token:".length());
+            String[] parts = payload.split(":", 2);
+            String roleHint = parts.length == 2 ? parts[0] : null;
+            String email = parts.length == 2 ? parts[1] : payload;
             String userId = "dev-user-" + (email.contains("@") ? email.split("@")[0] : email);
             
             request.setAttribute("clerk_email", email);
@@ -56,9 +67,14 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
             var auth = new UsernamePasswordAuthenticationToken(
                     userId,
                     null,
-                    List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                    authoritiesFor(userId, roleHint)
             );
             SecurityContextHolder.getContext().setAuthentication(auth);
+            chain.doFilter(request, response);
+            return;
+        }
+
+        if (tryAuthenticateLocalToken(token, request)) {
             chain.doFilter(request, response);
             return;
         }
@@ -100,7 +116,7 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
             var auth = new UsernamePasswordAuthenticationToken(
                     userId,
                     null,
-                    List.of(new SimpleGrantedAuthority("ROLE_USER"))
+                    authoritiesFor(userId, null)
             );
 
             SecurityContextHolder.getContext().setAuthentication(auth);
@@ -115,5 +131,52 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
 
     }
 
+    private boolean tryAuthenticateLocalToken(String token, HttpServletRequest request) {
+        try {
+            DecodedJWT jwt = authTokenService.verifyLocalToken(token);
+            String userId = jwt.getSubject();
+            String email = jwt.getClaim("email").asString();
 
+            if (userId == null || userId.isBlank()) {
+                return false;
+            }
+
+            request.setAttribute("clerk_email", email);
+            userService.findExistingByUid(userId).ifPresent(user -> request.setAttribute("clerk_name", user.name()));
+
+            var auth = new UsernamePasswordAuthenticationToken(
+                    userId,
+                    null,
+                    authoritiesFor(userId, null)
+            );
+            SecurityContextHolder.getContext().setAuthentication(auth);
+            return true;
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private List<SimpleGrantedAuthority> authoritiesFor(String userId, String roleHint) {
+        List<SimpleGrantedAuthority> authorities = new ArrayList<>();
+        authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
+
+        userService.findExistingByUid(userId)
+                .map(UserDto::role)
+                .or(() -> parseRole(roleHint))
+                .ifPresent(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name())));
+
+        return authorities;
+    }
+
+    private java.util.Optional<Role> parseRole(String roleHint) {
+        if (roleHint == null || roleHint.isBlank()) {
+            return java.util.Optional.empty();
+        }
+
+        try {
+            return java.util.Optional.of(Role.valueOf(roleHint.trim().toUpperCase()));
+        } catch (IllegalArgumentException ignored) {
+            return java.util.Optional.empty();
+        }
+    }
 }

@@ -1,7 +1,10 @@
 package com.notus.backend.users;
 
+import com.notus.backend.users.teachercode.TeacherCodeService;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
 
@@ -11,27 +14,23 @@ public class UserService {
     private final StudentRepository studentRepo;
     private final TeacherRepository teacherRepo;
     private final com.notus.backend.attendance.group.StudentGroupRepository studentGroupRepo;
+    private final TeacherCodeService teacherCodeService;
 
-    public UserService(StudentRepository studentRepo, TeacherRepository teacherRepo, com.notus.backend.attendance.group.StudentGroupRepository studentGroupRepo) {
+    public UserService(StudentRepository studentRepo,
+                       TeacherRepository teacherRepo,
+                       com.notus.backend.attendance.group.StudentGroupRepository studentGroupRepo,
+                       TeacherCodeService teacherCodeService) {
         this.studentRepo = studentRepo;
         this.teacherRepo = teacherRepo;
         this.studentGroupRepo = studentGroupRepo;
+        this.teacherCodeService = teacherCodeService;
     }
 
     @Transactional
     public UserDto findOrCreate(String clerkUserId, String email, String name) {
-        Role targetRole = roleFromEmail(email);
-
         Optional<Teacher> existingTeacher = teacherRepo.findByClerkUserId(clerkUserId);
         if (existingTeacher.isPresent()) {
             Teacher teacher = existingTeacher.get();
-
-            if (targetRole == Role.STUDENT) {
-                teacherRepo.delete(teacher);
-                Student student = createStudent(clerkUserId, email, name);
-                return mapStudentToDto(student);
-            }
-
             updateTeacherData(teacher, email, name);
             teacher = teacherRepo.save(teacher);
             return mapTeacherToDto(teacher);
@@ -40,25 +39,57 @@ public class UserService {
         Optional<Student> existingStudent = studentRepo.findByClerkUserId(clerkUserId);
         if (existingStudent.isPresent()) {
             Student student = existingStudent.get();
-
-            if (targetRole == Role.TEACHER) {
-                studentRepo.delete(student);
-                Teacher teacher = createTeacher(clerkUserId, email, name);
-                return mapTeacherToDto(teacher);
-            }
-
             updateStudentData(student, email, name);
             student = studentRepo.save(student);
             return mapStudentToDto(student);
         }
 
-        if (targetRole == Role.STUDENT) {
-            Student student = createStudent(clerkUserId, email, name);
-            return mapStudentToDto(student);
-        } else {
+        throw new ResponseStatusException(HttpStatus.CONFLICT, "Wybierz typ konta przed rejestracją");
+    }
+
+    @Transactional
+    public UserDto findOrCreate(String clerkUserId, String email, String name, Role requestedRole, String providedTeacherAccessCode) {
+        Optional<UserDto> existingUser = findExistingByUid(clerkUserId);
+        if (existingUser.isPresent()) {
+            UserDto user = existingUser.get();
+
+            if (requestedRole != null && user.role() != requestedRole) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "To konto jest już zarejestrowane jako " + user.role());
+            }
+
+            if (user.role() == Role.TEACHER && requestedRole == Role.TEACHER && hasText(providedTeacherAccessCode)) {
+                teacherCodeService.validateCode(providedTeacherAccessCode);
+            }
+
+            return findOrCreate(clerkUserId, email, name);
+        }
+
+        if (requestedRole == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Typ konta jest wymagany");
+        }
+
+        if (requestedRole == Role.TEACHER) {
+            teacherCodeService.consumeCode(providedTeacherAccessCode);
             Teacher teacher = createTeacher(clerkUserId, email, name);
             return mapTeacherToDto(teacher);
         }
+
+        if (requestedRole == Role.STUDENT) {
+            Student student = createStudent(clerkUserId, email, name);
+            return mapStudentToDto(student);
+        }
+
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Nieobsługiwany typ konta");
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<UserDto> findExistingByUid(String clerkUserId) {
+        Optional<Teacher> teacher = teacherRepo.findByClerkUserId(clerkUserId);
+        if (teacher.isPresent()) {
+            return teacher.map(this::mapTeacherToDto);
+        }
+
+        return studentRepo.findByClerkUserId(clerkUserId).map(this::mapStudentToDto);
     }
 
     public Optional<Student> findStudentByUid(String uid) {
@@ -142,6 +173,10 @@ public class UserService {
         return clerkUserId + "@temporary.com";
     }
 
+    private boolean hasText(String value) {
+        return value != null && !value.isBlank();
+    }
+
     private String resolveName(String email, String name) {
         if (name != null && !name.isBlank()) {
             return name;
@@ -167,25 +202,4 @@ public class UserService {
         return null;
     }
 
-    private Role roleFromEmail(String email) {
-        if (email == null || email.isBlank()) {
-            return Role.STUDENT;
-        }
-
-        String e = email.trim().toLowerCase();
-
-        if (e.startsWith("s")) {
-            return Role.STUDENT;
-        }
-
-        if (e.endsWith("@gmail.com")) {
-            return Role.TEACHER;
-        }
-
-        if (e.endsWith("@pjwstk.edu.pl") && !e.startsWith("s")) {
-            return Role.TEACHER;
-        }
-
-        return Role.TEACHER;
-    }
 }

@@ -42,8 +42,8 @@ public class AttendanceController {
         String uid = (String) auth.getPrincipal();
         UserDto u = resolveUser(auth, request);
 
-        if (u.role() != Role.TEACHER && u.role() != Role.ADMIN) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER/ADMIN może tworzyć sesje");
+        if (u.role() != Role.TEACHER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER może tworzyć sesje");
         }
 
         return attendanceService.createSession(uid, req);
@@ -56,8 +56,8 @@ public class AttendanceController {
         String uid = (String) auth.getPrincipal();
         UserDto u = resolveUser(auth, request);
 
-        if (u.role() != Role.TEACHER && u.role() != Role.ADMIN) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER/ADMIN może generować QR");
+        if (u.role() != Role.TEACHER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER może generować QR");
         }
 
         return attendanceService.generateQr(uid, sessionId);
@@ -84,8 +84,8 @@ public class AttendanceController {
         String uid = (String) auth.getPrincipal();
         UserDto u = resolveUser(auth, request);
 
-        if (u.role() != Role.TEACHER && u.role() != Role.ADMIN) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER/ADMIN może przeglądać obecności");
+        if (u.role() != Role.TEACHER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER może przeglądać obecności");
         }
 
         return attendanceService.getRecordsForSession(uid, id);
@@ -99,8 +99,8 @@ public class AttendanceController {
         String uid = (String) auth.getPrincipal();
         UserDto u = resolveUser(auth, request);
 
-        if (u.role() != Role.TEACHER && u.role() != Role.ADMIN) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER/ADMIN może zamykać sesje");
+        if (u.role() != Role.TEACHER) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Tylko TEACHER może zamykać sesje");
         }
 
         attendanceService.closeSession(uid, sessionId);

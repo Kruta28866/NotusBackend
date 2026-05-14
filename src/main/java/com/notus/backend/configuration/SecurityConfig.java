@@ -6,6 +6,8 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.web.cors.CorsConfiguration;
@@ -33,6 +35,34 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/health", "/api/test").permitAll()
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/me").authenticated()
+                        .requestMatchers("/api/admin/teacher-codes/**").hasAnyRole("ADMIN", "TEACHER")
+                        .requestMatchers("/api/student/**").hasRole("STUDENT")
+                        .requestMatchers("/api/history/student").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/attendance/check-in").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/quiz-assignments/*/take").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/quiz-assignments/*/my-answers").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/quiz-assignments/*/submit").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/quiz-assignments/active-for-session").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.GET, "/api/quiz-assignments/new-reviews").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/quiz-assignments/submissions/*/mark-seen").hasRole("STUDENT")
+                        .requestMatchers("/api/history/teacher", "/api/history/teacher/**", "/api/schedule/teacher/**").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.POST, "/api/schedule").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.PUT, "/api/schedule/**").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.DELETE, "/api/schedule/**").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.POST, "/api/attendance/sessions").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance/sessions/*/qr").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/attendance/sessions/*/records").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.POST, "/api/attendance/sessions/*/close").hasRole("TEACHER")
+                        .requestMatchers("/api/quiz/**").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.POST, "/api/quiz-assignments").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/quiz-assignments/my").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/quiz-assignments/*/results").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.POST, "/api/quiz-assignments/*/activate").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.POST, "/api/quiz-assignments/*/deactivate").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.GET, "/api/quiz-assignments/submissions/*/answers").hasRole("TEACHER")
+                        .requestMatchers(HttpMethod.POST, "/api/quiz-assignments/submissions/*/review").hasRole("TEACHER")
                         .requestMatchers("/api/quiz/**").authenticated()
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll()
@@ -41,5 +71,10 @@ public class SecurityConfig {
         http.addFilterBefore(clerkAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
+    }
+
+    @Bean
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
     }
 }
