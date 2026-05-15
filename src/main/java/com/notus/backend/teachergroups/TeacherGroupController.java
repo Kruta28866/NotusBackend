@@ -21,17 +21,20 @@ public class TeacherGroupController {
     private final GroupMembershipService membershipService;
     private final TeacherStudentSummaryService summaryService;
     private final GradeService gradeService;
+    private final StudentSearchService studentSearchService;
 
     public TeacherGroupController(TeacherGroupService groupService,
                                   GroupInvitationService invitationService,
                                   GroupMembershipService membershipService,
                                   TeacherStudentSummaryService summaryService,
-                                  GradeService gradeService) {
+                                  GradeService gradeService,
+                                  StudentSearchService studentSearchService) {
         this.groupService = groupService;
         this.invitationService = invitationService;
         this.membershipService = membershipService;
         this.summaryService = summaryService;
         this.gradeService = gradeService;
+        this.studentSearchService = studentSearchService;
     }
 
     @GetMapping
@@ -64,6 +67,13 @@ public class TeacherGroupController {
     @GetMapping("/{groupId}/students")
     public List<GroupStudentTableRowResponse> students(Principal principal, @PathVariable Long groupId) {
         return summaryService.listStudents(principal.getName(), groupId);
+    }
+
+    @GetMapping("/{groupId}/students/search")
+    public List<StudentSearchResponse> searchStudents(Principal principal,
+                                                      @PathVariable Long groupId,
+                                                      @RequestParam(name = "email", required = false) String email) {
+        return studentSearchService.search(principal.getName(), groupId, email);
     }
 
     @PostMapping("/{groupId}/students/invite")

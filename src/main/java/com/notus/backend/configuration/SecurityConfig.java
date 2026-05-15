@@ -39,7 +39,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/group-invitations/preview").permitAll()
                         .requestMatchers("/api/me").authenticated()
                         .requestMatchers("/api/admin/teacher-codes/**").hasAnyRole("ADMIN", "TEACHER")
-                        .requestMatchers(HttpMethod.POST, "/api/group-invitations/accept").hasRole("STUDENT")
+                        .requestMatchers(HttpMethod.POST, "/api/group-invitations/accept").authenticated()
                         .requestMatchers("/api/student/**").hasRole("STUDENT")
                         .requestMatchers("/api/history/student").hasRole("STUDENT")
                         .requestMatchers(HttpMethod.POST, "/api/attendance/check-in").hasRole("STUDENT")

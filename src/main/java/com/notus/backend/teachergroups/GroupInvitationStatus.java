@@ -4,5 +4,6 @@ public enum GroupInvitationStatus {
     PENDING,
     ACCEPTED,
     EXPIRED,
-    CANCELLED
+    CANCELLED,
+    FAILED
 }

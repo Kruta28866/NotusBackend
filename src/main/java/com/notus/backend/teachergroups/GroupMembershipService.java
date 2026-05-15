@@ -63,14 +63,20 @@ public class GroupMembershipService {
     }
 
     @Transactional
-    public AcceptGroupInvitationResponse accept(String studentUid, AcceptGroupInvitationRequest request) {
-        Student student = userService.findStudentByUid(studentUid)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz zaakceptować zaproszenia jako nauczyciel."));
+    public AcceptGroupInvitationResponse accept(String studentUid, String clerkEmail, String clerkName, AcceptGroupInvitationRequest request) {
+        GroupInvitation invitation = invitationService.requirePendingByRawToken(request.token());
+        String effectiveEmail = resolveClerkEmail(studentUid, clerkEmail);
+
+        if (invitation.getEmail() != null && !invitation.getEmail().isBlank()
+                && (effectiveEmail == null || !invitation.getEmail().equalsIgnoreCase(effectiveEmail))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "To zaproszenie jest przypisane do innego adresu email.");
+        }
+
+        Student student = userService.findOrCreateInvitedStudent(studentUid, effectiveEmail, clerkName);
         if (student.getRole() != Role.STUDENT) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz zaakceptować zaproszenia jako nauczyciel.");
         }
 
-        GroupInvitation invitation = invitationService.requirePendingByRawToken(request.token());
         if (invitation.getEmail() != null && !invitation.getEmail().isBlank()
                 && !invitation.getEmail().equalsIgnoreCase(student.getEmail())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Ten link zaproszeniowy jest przypisany do innego adresu email.");
@@ -106,5 +112,16 @@ public class GroupMembershipService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Pole jest wymagane.");
         }
         return value.trim();
+    }
+
+    private String resolveClerkEmail(String studentUid, String clerkEmail) {
+        if (clerkEmail != null && !clerkEmail.isBlank()) {
+            return clerkEmail.trim().toLowerCase();
+        }
+        return userService.findStudentByUid(studentUid)
+                .map(Student::getEmail)
+                .filter(email -> email != null && !email.isBlank())
+                .map(email -> email.trim().toLowerCase())
+                .orElse(null);
     }
 }

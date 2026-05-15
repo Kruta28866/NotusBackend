@@ -34,6 +34,8 @@ class TeacherGroupsServicesTest {
     private EmailService emailService;
     @Mock
     private GroupInvitationService invitationService;
+    @Mock
+    private StudentRepository studentRepository;
 
     private Teacher teacher;
     private Student student;
@@ -106,9 +108,12 @@ class TeacherGroupsServicesTest {
                 groupService,
                 new HashService(),
                 emailService,
+                studentRepository,
+                membershipRepository,
                 "http://localhost:5173"
         );
         when(groupService.requireOwnedGroup("teacher-uid", 5L)).thenReturn(group);
+        when(studentRepository.findByEmailIgnoreCase("student@example.com")).thenReturn(Optional.empty());
         when(invitationRepository.save(any(GroupInvitation.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         InviteStudentResponse response = service.invite("teacher-uid", 5L, new InviteStudentRequest("student@example.com"));
@@ -116,12 +121,38 @@ class TeacherGroupsServicesTest {
         ArgumentCaptor<GroupInvitation> invitationCaptor = ArgumentCaptor.forClass(GroupInvitation.class);
         ArgumentCaptor<String> linkCaptor = ArgumentCaptor.forClass(String.class);
         verify(invitationRepository).save(invitationCaptor.capture());
-        verify(emailService).sendGroupInvitation(eq("student@example.com"), eq("Matematyka 1A"), linkCaptor.capture());
+        verify(emailService).sendGroupInvitation(eq("student@example.com"), eq("Matematyka 1A"), eq("Teacher"), linkCaptor.capture());
 
         String rawToken = linkCaptor.getValue().substring(linkCaptor.getValue().indexOf("token=") + 6);
         assertTrue(response.success());
         assertNotEquals(rawToken, invitationCaptor.getValue().getTokenHash());
         assertEquals(new HashService().sha256(rawToken), invitationCaptor.getValue().getTokenHash());
+    }
+
+    @Test
+    void inviteMarksInvitationFailedWhenEmailProviderFails() {
+        TeacherGroupService groupService = mock(TeacherGroupService.class);
+        GroupInvitationService service = new GroupInvitationService(
+                invitationRepository,
+                groupService,
+                new HashService(),
+                emailService,
+                studentRepository,
+                membershipRepository,
+                "http://localhost:5173"
+        );
+        when(groupService.requireOwnedGroup("teacher-uid", 5L)).thenReturn(group);
+        when(studentRepository.findByEmailIgnoreCase("student@example.com")).thenReturn(Optional.empty());
+        when(invitationRepository.save(any(GroupInvitation.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        doThrow(new IllegalStateException("SMTP rejected")).when(emailService)
+                .sendGroupInvitation(eq("student@example.com"), eq("Matematyka 1A"), eq("Teacher"), anyString());
+
+        InviteStudentResponse response = service.invite("teacher-uid", 5L, new InviteStudentRequest("student@example.com"));
+
+        ArgumentCaptor<GroupInvitation> invitationCaptor = ArgumentCaptor.forClass(GroupInvitation.class);
+        verify(invitationRepository, atLeastOnce()).save(invitationCaptor.capture());
+        assertFalse(response.success());
+        assertEquals(GroupInvitationStatus.FAILED, invitationCaptor.getAllValues().getLast().getStatus());
     }
 
     @Test
@@ -140,12 +171,17 @@ class TeacherGroupsServicesTest {
         invitation.setExpiresAt(Instant.now().plusSeconds(3600));
         invitation.setCreatedByTeacher(teacher);
 
-        when(userService.findStudentByUid("student-uid")).thenReturn(Optional.of(student));
         when(invitationService.requirePendingByRawToken("raw-token")).thenReturn(invitation);
+        when(userService.findOrCreateInvitedStudent("student-uid", "student@example.com", "Anna Kowalska")).thenReturn(student);
         when(membershipRepository.findByGroupAndStudent(group, student)).thenReturn(Optional.empty());
         when(membershipRepository.save(any(GroupMembership.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
-        AcceptGroupInvitationResponse response = service.accept("student-uid", new AcceptGroupInvitationRequest("raw-token"));
+        AcceptGroupInvitationResponse response = service.accept(
+                "student-uid",
+                "student@example.com",
+                "Anna Kowalska",
+                new AcceptGroupInvitationRequest("raw-token")
+        );
 
         ArgumentCaptor<GroupMembership> membershipCaptor = ArgumentCaptor.forClass(GroupMembership.class);
         verify(membershipRepository).save(membershipCaptor.capture());

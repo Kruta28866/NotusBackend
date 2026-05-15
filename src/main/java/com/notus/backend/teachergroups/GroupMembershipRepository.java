@@ -12,4 +12,5 @@ public interface GroupMembershipRepository extends JpaRepository<GroupMembership
     Optional<GroupMembership> findByGroupAndStudent(TeacherGroup group, Student student);
     Optional<GroupMembership> findByGroupAndStudentAndStatus(TeacherGroup group, Student student, GroupMembershipStatus status);
     Optional<GroupMembership> findByGroupIdAndStudentIdAndStatus(Long groupId, Long studentId, GroupMembershipStatus status);
+    boolean existsByGroupAndStudentAndStatus(TeacherGroup group, Student student, GroupMembershipStatus status);
 }

@@ -4,7 +4,12 @@ import com.notus.backend.auth.HashService;
 import com.notus.backend.teachergroups.dto.InviteStudentRequest;
 import com.notus.backend.teachergroups.dto.InviteStudentResponse;
 import com.notus.backend.teachergroups.dto.GroupInvitationPreviewResponse;
+import com.notus.backend.users.Role;
+import com.notus.backend.users.Student;
+import com.notus.backend.users.StudentRepository;
 import com.notus.backend.users.Teacher;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -20,6 +25,7 @@ import java.util.regex.Pattern;
 @Service
 public class GroupInvitationService {
 
+    private static final Logger log = LoggerFactory.getLogger(GroupInvitationService.class);
     private static final Pattern EMAIL_PATTERN = Pattern.compile("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$");
     private static final String GENERIC_INVITE_ERROR = "Nie udało się zaprosić ucznia. Skontaktuj się z administratorem.";
 
@@ -27,6 +33,8 @@ public class GroupInvitationService {
     private final TeacherGroupService groupService;
     private final HashService hashService;
     private final EmailService emailService;
+    private final StudentRepository studentRepository;
+    private final GroupMembershipRepository membershipRepository;
     private final SecureRandom secureRandom = new SecureRandom();
     private final String frontendBaseUrl;
 
@@ -34,11 +42,15 @@ public class GroupInvitationService {
                                   TeacherGroupService groupService,
                                   HashService hashService,
                                   EmailService emailService,
+                                  StudentRepository studentRepository,
+                                  GroupMembershipRepository membershipRepository,
                                   @Value("${app.frontend-base-url:http://localhost:5173}") String frontendBaseUrl) {
         this.invitationRepository = invitationRepository;
         this.groupService = groupService;
         this.hashService = hashService;
         this.emailService = emailService;
+        this.studentRepository = studentRepository;
+        this.membershipRepository = membershipRepository;
         this.frontendBaseUrl = frontendBaseUrl.replaceAll("/+$", "");
     }
 
@@ -51,6 +63,11 @@ public class GroupInvitationService {
             }
 
             TeacherGroup group = groupService.requireOwnedGroup(teacherUid, groupId);
+            InviteStudentResponse existingStudentCheck = checkExistingStudent(email, group);
+            if (existingStudentCheck != null) {
+                return existingStudentCheck;
+            }
+
             Teacher teacher = group.getTeacher();
             String rawToken = generateRawToken();
 
@@ -64,22 +81,67 @@ public class GroupInvitationService {
             invitationRepository.save(invitation);
 
             String inviteLink = frontendBaseUrl + "/invite/group?token=" + rawToken;
-            emailService.sendGroupInvitation(email, group.getName(), inviteLink);
+            try {
+                emailService.sendGroupInvitation(email, group.getName(), teacher.getName(), inviteLink);
+            } catch (RuntimeException ex) {
+                invitation.setStatus(GroupInvitationStatus.FAILED);
+                invitationRepository.save(invitation);
+                throw ex;
+            }
             return new InviteStudentResponse(true, "Zaproszenie zostało wysłane.");
         } catch (ResponseStatusException ex) {
             if (ex.getStatusCode().is4xxClientError() && ex.getStatusCode() != HttpStatus.FORBIDDEN) {
+                log.warn("Group invitation rejected for group {}: {}", groupId, ex.getReason());
                 return new InviteStudentResponse(false, GENERIC_INVITE_ERROR);
             }
             throw ex;
         } catch (RuntimeException ex) {
+            log.error("Could not send group invitation for group {}", groupId, ex);
             return new InviteStudentResponse(false, GENERIC_INVITE_ERROR);
         }
     }
 
+    private InviteStudentResponse checkExistingStudent(String email, TeacherGroup group) {
+        Student student = studentRepository.findByEmailIgnoreCase(email).orElse(null);
+        if (student == null) {
+            return null;
+        }
+
+        if (student.getRole() != Role.STUDENT) {
+            return new InviteStudentResponse(false, GENERIC_INVITE_ERROR);
+        }
+
+        if (membershipRepository.existsByGroupAndStudentAndStatus(group, student, GroupMembershipStatus.ACTIVE)) {
+            return new InviteStudentResponse(false, "Ten uczeń jest już w grupie.");
+        }
+
+        return null;
+    }
+
     @Transactional(readOnly = true)
     public GroupInvitationPreviewResponse preview(String rawToken) {
-        GroupInvitation invitation = requirePendingByRawToken(rawToken);
-        return new GroupInvitationPreviewResponse(true, invitation.getGroup().getName(), "Zaproszenie jest aktywne.");
+        try {
+            GroupInvitation invitation = requirePendingByRawToken(rawToken);
+            return new GroupInvitationPreviewResponse(
+                    true,
+                    invitation.getGroup().getId(),
+                    invitation.getGroup().getName(),
+                    invitation.getCreatedByTeacher().getName(),
+                    invitation.getEmail(),
+                    invitation.getExpiresAt(),
+                    "Zaproszenie jest aktywne."
+            );
+        } catch (ResponseStatusException ex) {
+            return new GroupInvitationPreviewResponse(
+                    false,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    ex.getReason() != null ? ex.getReason() : "Zaproszenie jest nieprawidłowe albo wygasło."
+            );
+        }
     }
 
     @Transactional(readOnly = true)

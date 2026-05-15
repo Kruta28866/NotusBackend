@@ -96,6 +96,39 @@ public class UserService {
         return studentRepo.findByClerkUserId(uid);
     }
 
+    @Transactional
+    public Student findOrCreateInvitedStudent(String clerkUserId, String email, String name) {
+        if (clerkUserId == null || clerkUserId.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Brak zalogowanego użytkownika.");
+        }
+        if (email == null || email.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Brak adresu email zalogowanego użytkownika.");
+        }
+
+        Optional<Teacher> teacherByUid = teacherRepo.findByClerkUserId(clerkUserId);
+        Optional<Teacher> teacherByEmail = teacherRepo.findByEmailIgnoreCase(email);
+        if (teacherByUid.isPresent() || teacherByEmail.isPresent()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz zaakceptować zaproszenia jako nauczyciel.");
+        }
+
+        Optional<Student> existingByUid = studentRepo.findByClerkUserId(clerkUserId);
+        if (existingByUid.isPresent()) {
+            Student student = existingByUid.get();
+            updateStudentData(student, email, name);
+            return studentRepo.save(student);
+        }
+
+        Optional<Student> existingByEmail = studentRepo.findByEmailIgnoreCase(email);
+        if (existingByEmail.isPresent()) {
+            Student student = existingByEmail.get();
+            student.setClerkUserId(clerkUserId);
+            updateStudentData(student, email, name);
+            return studentRepo.save(student);
+        }
+
+        return createStudent(clerkUserId, email, name);
+    }
+
     public Optional<Student> findStudentWithGroupsByUid(String uid) {
         return studentRepo.findWithStudentGroupsByClerkUserId(uid);
     }
