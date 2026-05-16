@@ -1,6 +1,7 @@
 package com.notus.backend.quiz;
 
 import com.notus.backend.users.Student;
+import com.notus.backend.users.Teacher;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -18,4 +19,5 @@ public interface QuizSubmissionRepository extends JpaRepository<QuizSubmission, 
     boolean existsByAssignment(QuizAssignment assignment);
 
     List<QuizSubmission> findByStudentAndReviewedAtIsNotNullAndNotificationSeenFalse(Student student);
+    List<QuizSubmission> findByAssignment_Teacher(Teacher teacher);
 }

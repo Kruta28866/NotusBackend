@@ -223,6 +223,7 @@ public class HistoryService {
                     .studentId(s.getId())
                     .studentName(s.getName())
                     .attended(r != null)
+                    .submissionId(qs != null ? qs.getId() : null)
                     .quizScore(qs != null ? qs.getScore() : null)
                     .quizTotal(qs != null ? qs.getTotal() : null)
                     .build());

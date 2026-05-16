@@ -1,6 +1,8 @@
 package com.notus.backend.attendance;
 
 import com.notus.backend.attendance.dto.*;
+import com.notus.backend.realtime.TeacherRealtimeService;
+import com.notus.backend.realtime.dto.TeacherRealtimeEvent;
 import com.notus.backend.schedule.Schedule;
 import com.notus.backend.schedule.ScheduleRepository;
 import com.notus.backend.users.Student;
@@ -14,7 +16,10 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.security.SecureRandom;
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Slf4j
 @Service
@@ -27,6 +32,7 @@ public class AttendanceService {
     private final StudentRepository studentRepo;
     private final TeacherRepository teacherRepo;
     private final ScheduleRepository scheduleRepository;
+    private final TeacherRealtimeService realtimeService;
 
     public AttendanceService(
             AttendanceSessionRepository sessionRepo,
@@ -35,7 +41,8 @@ public class AttendanceService {
             QrImageService qrImageService,
             StudentRepository studentRepo,
             TeacherRepository teacherRepo,
-            ScheduleRepository scheduleRepository
+            ScheduleRepository scheduleRepository,
+            TeacherRealtimeService realtimeService
     ) {
         this.sessionRepo = sessionRepo;
         this.recordRepo = recordRepo;
@@ -44,6 +51,7 @@ public class AttendanceService {
         this.studentRepo = studentRepo;
         this.teacherRepo = teacherRepo;
         this.scheduleRepository = scheduleRepository;
+        this.realtimeService = realtimeService;
     }
 
     @Transactional
@@ -160,7 +168,7 @@ public class AttendanceService {
         if (existing.isPresent()) {
             log.info("Student {} already checked in for session {}", studentUid, s.getId());
             AttendanceRecord existingRecord = existing.get();
-            return new CheckInResponse(existingRecord.getSessionId(), s.getSchedule().getSubject(), studentUid, student.getName(), student.getIndexNumber(), existingRecord.getCheckedInAt(), true, s.getEndsAt());
+            return new CheckInResponse(existingRecord.getSessionId(), subjectOf(s), studentUid, student.getName(), student.getIndexNumber(), existingRecord.getCheckedInAt(), true, s.getEndsAt());
         }
 
         AttendanceRecord r = new AttendanceRecord();
@@ -171,7 +179,28 @@ public class AttendanceService {
         r = recordRepo.save(r);
         log.info("Student {} successfully checked in for session {}", studentUid, s.getId());
 
-        return new CheckInResponse(r.getSessionId(), s.getSchedule().getSubject(), studentUid, student.getName(), student.getIndexNumber(), r.getCheckedInAt(), false, s.getEndsAt());
+        String subject = subjectOf(s);
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("sessionId", s.getId());
+        if (s.getSchedule() != null) {
+            payload.put("scheduleId", s.getSchedule().getId());
+        }
+        payload.put("subject", subject);
+        payload.put("studentId", student.getId());
+        payload.put("studentName", student.getName());
+        payload.put("studentIndex", student.getIndexNumber());
+        payload.put("checkedInAt", r.getCheckedInAt().toString());
+        payload.values().removeIf(Objects::isNull);
+
+        if (s.getTeacher() != null && s.getTeacher().getClerkUserId() != null) {
+            realtimeService.publishToTeacher(
+                    s.getTeacher().getClerkUserId(),
+                    "attendance.checked_in",
+                    TeacherRealtimeEvent.of("attendance.checked_in", payload)
+            );
+        }
+
+        return new CheckInResponse(r.getSessionId(), subject, studentUid, student.getName(), student.getIndexNumber(), r.getCheckedInAt(), false, s.getEndsAt());
     }
 
     @Transactional(readOnly = true)
@@ -223,6 +252,13 @@ public class AttendanceService {
             log.warn("Could not parse endsAt from schedule time '{}': {}", schedule.getTime(), e.getMessage());
             return null;
         }
+    }
+
+    private String subjectOf(AttendanceSession session) {
+        if (session.getSchedule() != null) {
+            return session.getSchedule().getSubject();
+        }
+        return session.getTitle();
     }
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();

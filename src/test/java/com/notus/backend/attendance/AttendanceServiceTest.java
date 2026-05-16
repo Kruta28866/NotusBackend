@@ -5,6 +5,7 @@ import com.notus.backend.attendance.dto.CheckInResponse;
 import com.notus.backend.attendance.dto.CreateSessionRequest;
 import com.notus.backend.attendance.dto.CreateSessionResponse;
 import com.notus.backend.attendance.dto.QrResponse;
+import com.notus.backend.realtime.TeacherRealtimeService;
 import com.notus.backend.schedule.Schedule;
 import com.notus.backend.schedule.ScheduleRepository;
 import com.notus.backend.users.Student;
@@ -50,6 +51,9 @@ class AttendanceServiceTest {
 
     @Mock
     private ScheduleRepository scheduleRepository;
+
+    @Mock
+    private TeacherRealtimeService realtimeService;
 
     @InjectMocks
     private AttendanceService attendanceService;

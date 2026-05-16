@@ -45,14 +45,18 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
             return;
         }
 
+        String token = null;
         String header = request.getHeader(HttpHeaders.AUTHORIZATION);
+        if (header != null && header.startsWith("Bearer ")) {
+            token = header.substring(7).trim();
+        } else if ("/api/teacher/realtime/stream".equals(request.getRequestURI())) {
+            token = request.getParameter("token");
+        }
 
-        if (header == null || !header.startsWith("Bearer ")) {
+        if (token == null || token.isBlank()) {
             chain.doFilter(request, response);
             return;
         }
-
-        String token = header.substring(7).trim();
 
         if (token.startsWith("mock-dev-token:")) {
             String payload = token.substring("mock-dev-token:".length());

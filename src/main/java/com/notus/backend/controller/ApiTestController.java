@@ -16,4 +16,9 @@ public class ApiTestController {
                 "status", "OK"
         );
     }
+
+    @GetMapping({"/api/health", "/actuator/health"})
+    public Map<String, Object> health() {
+        return Map.of("status", "UP");
+    }
 }

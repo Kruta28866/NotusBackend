@@ -1,6 +1,7 @@
 package com.notus.backend.teachergroups;
 
 import com.notus.backend.auth.HashService;
+import com.notus.backend.realtime.TeacherRealtimeService;
 import com.notus.backend.teachergroups.dto.*;
 import com.notus.backend.users.*;
 import org.junit.jupiter.api.BeforeEach;
@@ -162,7 +163,8 @@ class TeacherGroupsServicesTest {
                 invitationRepository,
                 invitationService,
                 mock(TeacherGroupService.class),
-                userService
+                userService,
+                mock(TeacherRealtimeService.class)
         );
         GroupInvitation invitation = new GroupInvitation();
         invitation.setGroup(group);
@@ -200,7 +202,8 @@ class TeacherGroupsServicesTest {
                 invitationRepository,
                 invitationService,
                 groupService,
-                userService
+                userService,
+                mock(TeacherRealtimeService.class)
         );
         GroupMembership membership = new GroupMembership();
         membership.setGroup(group);

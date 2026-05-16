@@ -34,7 +34,7 @@ public class SecurityConfig {
                 .cors(Customizer.withDefaults())
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers("/api/health", "/api/test").permitAll()
+                        .requestMatchers("/api/health", "/api/test", "/actuator/health").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/group-invitations/preview").permitAll()
                         .requestMatchers("/api/me").authenticated()
@@ -57,7 +57,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/attendance/sessions/*/qr").hasRole("TEACHER")
                         .requestMatchers(HttpMethod.GET, "/api/attendance/sessions/*/records").hasRole("TEACHER")
                         .requestMatchers(HttpMethod.POST, "/api/attendance/sessions/*/close").hasRole("TEACHER")
-                        .requestMatchers("/api/teacher/groups/**").hasRole("TEACHER")
+                        .requestMatchers("/api/teacher/groups/**", "/api/teacher/analytics/**", "/api/teacher/realtime/**").hasRole("TEACHER")
                         .requestMatchers("/api/quiz/**").hasRole("TEACHER")
                         .requestMatchers(HttpMethod.POST, "/api/quiz-assignments").hasRole("TEACHER")
                         .requestMatchers(HttpMethod.GET, "/api/quiz-assignments/my").hasRole("TEACHER")

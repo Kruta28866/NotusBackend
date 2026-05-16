@@ -9,6 +9,7 @@ public class SessionStudentResultDto {
     private Long studentId;
     private String studentName;
     private boolean attended;
+    private Long submissionId;
     private Integer quizScore;
     private Integer quizTotal;
 }

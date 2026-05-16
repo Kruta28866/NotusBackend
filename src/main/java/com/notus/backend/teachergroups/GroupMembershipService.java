@@ -1,5 +1,7 @@
 package com.notus.backend.teachergroups;
 
+import com.notus.backend.realtime.TeacherRealtimeService;
+import com.notus.backend.realtime.dto.TeacherRealtimeEvent;
 import com.notus.backend.teachergroups.dto.*;
 import com.notus.backend.users.Role;
 import com.notus.backend.users.Student;
@@ -10,7 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 
 @Service
 public class GroupMembershipService {
@@ -20,17 +25,20 @@ public class GroupMembershipService {
     private final GroupInvitationService invitationService;
     private final TeacherGroupService groupService;
     private final UserService userService;
+    private final TeacherRealtimeService realtimeService;
 
     public GroupMembershipService(GroupMembershipRepository membershipRepository,
                                   GroupInvitationRepository invitationRepository,
                                   GroupInvitationService invitationService,
                                   TeacherGroupService groupService,
-                                  UserService userService) {
+                                  UserService userService,
+                                  TeacherRealtimeService realtimeService) {
         this.membershipRepository = membershipRepository;
         this.invitationRepository = invitationRepository;
         this.invitationService = invitationService;
         this.groupService = groupService;
         this.userService = userService;
+        this.realtimeService = realtimeService;
     }
 
     @Transactional(readOnly = true)
@@ -49,6 +57,7 @@ public class GroupMembershipService {
         membership.setDisplayNameOverride(trimRequired(request.displayName()));
         membership.setEmailOverride(trimRequired(request.email()).toLowerCase());
         membershipRepository.save(membership);
+        publishGroupStudentEvent(group, membership, "group.student_updated");
         return new UpdateGroupStudentResponse(true, "Dane ucznia zostały zaktualizowane.");
     }
 
@@ -59,6 +68,7 @@ public class GroupMembershipService {
         membership.setStatus(GroupMembershipStatus.REMOVED);
         membership.setRemovedAt(Instant.now());
         membershipRepository.save(membership);
+        publishGroupStudentEvent(group, membership, "group.student_removed");
         return new RemoveGroupStudentResponse(true, "Uczeń został usunięty z grupy.");
     }
 
@@ -97,6 +107,7 @@ public class GroupMembershipService {
         invitation.setAcceptedAt(Instant.now());
         invitation.setAcceptedBy(student);
         invitationRepository.save(invitation);
+        publishGroupStudentEvent(group, membership, "group.student_joined");
 
         return new AcceptGroupInvitationResponse(true, "Dołączyłeś do grupy.", group.getId(), group.getName());
     }
@@ -123,5 +134,21 @@ public class GroupMembershipService {
                 .filter(email -> email != null && !email.isBlank())
                 .map(email -> email.trim().toLowerCase())
                 .orElse(null);
+    }
+
+    private void publishGroupStudentEvent(TeacherGroup group, GroupMembership membership, String eventName) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("groupId", group.getId());
+        payload.put("groupName", group.getName());
+        payload.put("studentId", membership.getStudent().getId());
+        payload.put("studentName", membership.getStudent().getName());
+        payload.put("email", membership.getStudent().getEmail());
+        payload.values().removeIf(Objects::isNull);
+
+        realtimeService.publishToTeacher(
+                group.getTeacher().getClerkUserId(),
+                eventName,
+                TeacherRealtimeEvent.of(eventName, payload)
+        );
     }
 }
