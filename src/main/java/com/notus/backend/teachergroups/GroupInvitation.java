@@ -43,6 +43,9 @@ public class GroupInvitation {
     @Column(name = "accepted_at")
     private Instant acceptedAt;
 
+    @Column(name = "last_sent_at")
+    private Instant lastSentAt;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "accepted_by_user_id")
     private Student acceptedBy;
@@ -58,6 +61,9 @@ public class GroupInvitation {
     void prePersist() {
         if (createdAt == null) {
             createdAt = Instant.now();
+        }
+        if (lastSentAt == null) {
+            lastSentAt = createdAt;
         }
     }
 }

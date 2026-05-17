@@ -9,6 +9,7 @@ import java.util.Optional;
 
 public interface AttendanceSessionRepository extends JpaRepository<AttendanceSession, Long> {
     List<AttendanceSession> findByTeacher(Teacher teacher);
+    List<AttendanceSession> findTop10ByTeacherOrderByCreatedAtDesc(Teacher teacher);
     Optional<AttendanceSession> findByIdAndTeacher(Long id, Teacher teacher);
     Optional<AttendanceSession> findByShortCode(String shortCode);
     Optional<AttendanceSession> findByScheduleIdAndActiveTrue(String scheduleId);

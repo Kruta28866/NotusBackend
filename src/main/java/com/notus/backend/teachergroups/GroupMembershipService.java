@@ -50,6 +50,17 @@ public class GroupMembershipService {
                 .toList();
     }
 
+    @Transactional(readOnly = true)
+    public List<StudentGroupResponse> listStudentGroups(String studentUid) {
+        Student student = userService.findStudentByUid(studentUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Uczeń nie istnieje."));
+
+        return membershipRepository.findByStudentAndStatusOrderByJoinedAtDesc(student, GroupMembershipStatus.ACTIVE)
+                .stream()
+                .map(this::toStudentGroupResponse)
+                .toList();
+    }
+
     @Transactional
     public UpdateGroupStudentResponse updateStudent(String teacherUid, Long groupId, Long studentId, UpdateGroupStudentRequest request) {
         TeacherGroup group = groupService.requireOwnedGroup(teacherUid, groupId);
@@ -68,6 +79,7 @@ public class GroupMembershipService {
         membership.setStatus(GroupMembershipStatus.REMOVED);
         membership.setRemovedAt(Instant.now());
         membershipRepository.save(membership);
+        cancelInvitationsForRemovedMember(group, membership);
         publishGroupStudentEvent(group, membership, "group.student_removed");
         return new RemoveGroupStudentResponse(true, "Uczeń został usunięty z grupy.");
     }
@@ -95,6 +107,14 @@ public class GroupMembershipService {
         TeacherGroup group = invitation.getGroup();
         GroupMembership membership = membershipRepository.findByGroupAndStudent(group, student)
                 .orElseGet(GroupMembership::new);
+        if (membership.getStatus() == GroupMembershipStatus.REMOVED
+                && membership.getRemovedAt() != null
+                && invitationSentBeforeOrAt(invitation, membership.getRemovedAt())) {
+            invitation.setStatus(GroupInvitationStatus.CANCELLED);
+            invitationRepository.save(invitation);
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "To zaproszenie zostało unieważnione po usunięciu ucznia z grupy.");
+        }
         membership.setGroup(group);
         membership.setStudent(student);
         membership.setDisplayNameOverride(student.getName());
@@ -107,6 +127,7 @@ public class GroupMembershipService {
         invitation.setAcceptedAt(Instant.now());
         invitation.setAcceptedBy(student);
         invitationRepository.save(invitation);
+        closeDuplicateInvitations(invitation, student);
         publishGroupStudentEvent(group, membership, "group.student_joined");
 
         return new AcceptGroupInvitationResponse(true, "Dołączyłeś do grupy.", group.getId(), group.getName());
@@ -134,6 +155,81 @@ public class GroupMembershipService {
                 .filter(email -> email != null && !email.isBlank())
                 .map(email -> email.trim().toLowerCase())
                 .orElse(null);
+    }
+
+    private void closeDuplicateInvitations(GroupInvitation acceptedInvitation, Student student) {
+        if (acceptedInvitation.getEmail() == null || acceptedInvitation.getEmail().isBlank()) {
+            return;
+        }
+
+        Instant acceptedAt = acceptedInvitation.getAcceptedAt() != null
+                ? acceptedInvitation.getAcceptedAt()
+                : Instant.now();
+
+        invitationRepository
+                .findByGroupAndEmailIgnoreCaseOrderByCreatedAtDesc(
+                        acceptedInvitation.getGroup(),
+                        acceptedInvitation.getEmail()
+                )
+                .stream()
+                .filter(invitation -> !Objects.equals(invitation.getId(), acceptedInvitation.getId()))
+                .filter(invitation -> invitation.getStatus() == GroupInvitationStatus.PENDING)
+                .forEach(invitation -> {
+                    invitation.setStatus(GroupInvitationStatus.ACCEPTED);
+                    invitation.setAcceptedAt(acceptedAt);
+                    invitation.setAcceptedBy(student);
+                    invitationRepository.save(invitation);
+                });
+    }
+
+    private void cancelInvitationsForRemovedMember(TeacherGroup group, GroupMembership membership) {
+        String email = membershipEmail(membership);
+        if (email == null || email.isBlank()) {
+            return;
+        }
+
+        invitationRepository.findByGroupAndEmailIgnoreCaseOrderByCreatedAtDesc(group, email)
+                .stream()
+                .filter(invitation -> invitation.getStatus() == GroupInvitationStatus.PENDING
+                        || invitation.getStatus() == GroupInvitationStatus.ACCEPTED)
+                .forEach(invitation -> {
+                    invitation.setStatus(GroupInvitationStatus.CANCELLED);
+                    invitation.setAcceptedAt(null);
+                    invitation.setAcceptedBy(null);
+                    invitationRepository.save(invitation);
+                });
+    }
+
+    private boolean invitationSentBeforeOrAt(GroupInvitation invitation, Instant removedAt) {
+        Instant sentAt = invitation.getLastSentAt() != null
+                ? invitation.getLastSentAt()
+                : invitation.getCreatedAt();
+        return sentAt == null || !sentAt.isAfter(removedAt);
+    }
+
+    private String membershipEmail(GroupMembership membership) {
+        if (membership.getEmailOverride() != null && !membership.getEmailOverride().isBlank()) {
+            return membership.getEmailOverride().trim().toLowerCase();
+        }
+        if (membership.getStudent() != null && membership.getStudent().getEmail() != null) {
+            return membership.getStudent().getEmail().trim().toLowerCase();
+        }
+        return null;
+    }
+
+    private StudentGroupResponse toStudentGroupResponse(GroupMembership membership) {
+        TeacherGroup group = membership.getGroup();
+        return new StudentGroupResponse(
+                group.getId(),
+                group.getName(),
+                group.getDescription(),
+                group.getSubject(),
+                group.getSchoolYear(),
+                group.getSemester(),
+                group.getTeacher().getName(),
+                group.getTeacher().getEmail(),
+                membership.getJoinedAt()
+        );
     }
 
     private void publishGroupStudentEvent(TeacherGroup group, GroupMembership membership, String eventName) {

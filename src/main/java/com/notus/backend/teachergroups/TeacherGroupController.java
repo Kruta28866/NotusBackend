@@ -83,6 +83,25 @@ public class TeacherGroupController {
         return invitationService.invite(principal.getName(), groupId, request);
     }
 
+    @GetMapping("/{groupId}/invitations")
+    public List<GroupInvitationResponse> invitations(Principal principal, @PathVariable Long groupId) {
+        return invitationService.listForGroup(principal.getName(), groupId);
+    }
+
+    @PostMapping("/{groupId}/invitations/{invitationId}/resend")
+    public GroupInvitationResponse resendInvitation(Principal principal,
+                                                    @PathVariable Long groupId,
+                                                    @PathVariable Long invitationId) {
+        return invitationService.resend(principal.getName(), groupId, invitationId);
+    }
+
+    @PostMapping("/{groupId}/invitations/{invitationId}/cancel")
+    public GroupInvitationResponse cancelInvitation(Principal principal,
+                                                    @PathVariable Long groupId,
+                                                    @PathVariable Long invitationId) {
+        return invitationService.cancel(principal.getName(), groupId, invitationId);
+    }
+
     @PutMapping("/{groupId}/students/{studentId}")
     public UpdateGroupStudentResponse updateStudent(Principal principal,
                                                     @PathVariable Long groupId,

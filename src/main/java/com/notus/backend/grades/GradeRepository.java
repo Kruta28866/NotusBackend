@@ -16,5 +16,6 @@ public interface GradeRepository extends JpaRepository<Grade, Long> {
     Optional<Grade> findByIdAndGroupAndStudentAndDeletedAtIsNull(Long id, TeacherGroup group, Student student);
     Optional<Grade> findByStudentAndGroupAndSourceTypeAndSourceIdAndDeletedAtIsNull(Student student, TeacherGroup group, String sourceType, Long sourceId);
     List<Grade> findByTeacherAndDeletedAtIsNull(Teacher teacher);
+    List<Grade> findTop10ByTeacherAndDeletedAtIsNullOrderByCreatedAtDesc(Teacher teacher);
     List<Grade> findByGroupAndDeletedAtIsNull(TeacherGroup group);
 }
