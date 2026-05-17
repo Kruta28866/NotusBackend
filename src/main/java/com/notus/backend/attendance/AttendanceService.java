@@ -5,6 +5,8 @@ import com.notus.backend.realtime.TeacherRealtimeService;
 import com.notus.backend.realtime.dto.TeacherRealtimeEvent;
 import com.notus.backend.schedule.Schedule;
 import com.notus.backend.schedule.ScheduleRepository;
+import com.notus.backend.teachergroups.GroupMembershipRepository;
+import com.notus.backend.teachergroups.GroupMembershipStatus;
 import com.notus.backend.users.Student;
 import com.notus.backend.users.StudentRepository;
 import com.notus.backend.users.TeacherRepository;
@@ -33,6 +35,7 @@ public class AttendanceService {
     private final TeacherRepository teacherRepo;
     private final ScheduleRepository scheduleRepository;
     private final TeacherRealtimeService realtimeService;
+    private final GroupMembershipRepository groupMembershipRepository;
 
     public AttendanceService(
             AttendanceSessionRepository sessionRepo,
@@ -42,7 +45,8 @@ public class AttendanceService {
             StudentRepository studentRepo,
             TeacherRepository teacherRepo,
             ScheduleRepository scheduleRepository,
-            TeacherRealtimeService realtimeService
+            TeacherRealtimeService realtimeService,
+            GroupMembershipRepository groupMembershipRepository
     ) {
         this.sessionRepo = sessionRepo;
         this.recordRepo = recordRepo;
@@ -52,6 +56,7 @@ public class AttendanceService {
         this.teacherRepo = teacherRepo;
         this.scheduleRepository = scheduleRepository;
         this.realtimeService = realtimeService;
+        this.groupMembershipRepository = groupMembershipRepository;
     }
 
     @Transactional
@@ -162,6 +167,7 @@ public class AttendanceService {
 
         var student = studentRepo.findByClerkUserId(studentUid)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student nie znaleziony"));
+        assertStudentCanAttend(s, student);
 
         var existing = recordRepo.findBySessionIdAndStudent(s.getId(), student);
 
@@ -259,6 +265,21 @@ public class AttendanceService {
             return session.getSchedule().getSubject();
         }
         return session.getTitle();
+    }
+
+    private void assertStudentCanAttend(AttendanceSession session, Student student) {
+        Schedule schedule = session.getSchedule();
+        if (schedule == null) {
+            return;
+        }
+        if (schedule.getTeacherGroup() != null) {
+            boolean member = groupMembershipRepository
+                    .findByGroupAndStudentAndStatus(schedule.getTeacherGroup(), student, GroupMembershipStatus.ACTIVE)
+                    .isPresent();
+            if (!member) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie należysz do grupy tych zajęć.");
+            }
+        }
     }
 
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();

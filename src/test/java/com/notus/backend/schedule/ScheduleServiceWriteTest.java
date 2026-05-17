@@ -1,6 +1,9 @@
 package com.notus.backend.schedule;
 
 import com.notus.backend.attendance.group.StudentGroupRepository;
+import com.notus.backend.teachergroups.GroupMembershipRepository;
+import com.notus.backend.teachergroups.TeacherGroup;
+import com.notus.backend.teachergroups.TeacherGroupRepository;
 import com.notus.backend.users.Teacher;
 import com.notus.backend.users.TeacherRepository;
 import org.junit.jupiter.api.Test;
@@ -26,6 +29,8 @@ class ScheduleServiceWriteTest {
     @Mock private ScheduleRepository scheduleRepository;
     @Mock private TeacherRepository teacherRepository;
     @Mock private StudentGroupRepository studentGroupRepository;
+    @Mock private TeacherGroupRepository teacherGroupRepository;
+    @Mock private GroupMembershipRepository groupMembershipRepository;
 
     @InjectMocks private ScheduleService scheduleService;
 
@@ -52,34 +57,41 @@ class ScheduleServiceWriteTest {
 
     @Test
     void createSchedule_savesAndReturnsSchedule() {
-        Teacher teacher = new Teacher();
-        teacher.setId(1L);
-        teacher.setName("Jan Kowalski");
+        Teacher teacher = teacher(1L);
+        TeacherGroup group = teacherGroup(10L, teacher);
         when(teacherRepository.findByClerkUserId("uid1")).thenReturn(Optional.of(teacher));
+        when(teacherGroupRepository.findByIdAndTeacherAndActiveTrue(10L, teacher)).thenReturn(Optional.of(group));
 
         Schedule saved = new Schedule();
         saved.setId("new-id");
         when(scheduleRepository.save(any(Schedule.class))).thenReturn(saved);
 
-        CreateScheduleRequest req = new CreateScheduleRequest(
-                "Matematyka", Instant.now(), "08:00 - 09:30", "101", "Wykład", null, null
-        );
-
-        Schedule result = scheduleService.createSchedule(req, "uid1");
+        Schedule result = scheduleService.createSchedule(request(10L), "uid1");
 
         assertThat(result.getId()).isEqualTo("new-id");
         verify(scheduleRepository).save(any(Schedule.class));
     }
 
     @Test
+    void createSchedule_throws400_whenGroupMissing() {
+        Teacher teacher = teacher(1L);
+        when(teacherRepository.findByClerkUserId("uid1")).thenReturn(Optional.of(teacher));
+
+        CreateScheduleRequest req = new CreateScheduleRequest(
+                "Matematyka", Instant.now(), "08:00 - 09:30", "101", "Wyklad", null, null, null
+        );
+
+        assertThatThrownBy(() -> scheduleService.createSchedule(req, "uid1"))
+                .isInstanceOf(ResponseStatusException.class)
+                .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
+                        .isEqualTo(HttpStatus.BAD_REQUEST));
+    }
+
+    @Test
     void createSchedule_throws403_whenTeacherNotFound() {
         when(teacherRepository.findByClerkUserId("unknown")).thenReturn(Optional.empty());
 
-        CreateScheduleRequest req = new CreateScheduleRequest(
-                "Matematyka", Instant.now(), "08:00 - 09:30", "101", "Wykład", null, null
-        );
-
-        assertThatThrownBy(() -> scheduleService.createSchedule(req, "unknown"))
+        assertThatThrownBy(() -> scheduleService.createSchedule(request(10L), "unknown"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                         .isEqualTo(HttpStatus.FORBIDDEN));
@@ -87,31 +99,27 @@ class ScheduleServiceWriteTest {
 
     @Test
     void updateSchedule_updatesFields() {
-        Schedule existing = new Schedule();
-        existing.setId("id1");
+        Teacher teacher = teacher(1L);
+        TeacherGroup group = teacherGroup(10L, teacher);
+        Schedule existing = schedule("id1", teacher);
         existing.setSubject("Old Subject");
         when(scheduleRepository.findById("id1")).thenReturn(Optional.of(existing));
+        when(teacherRepository.findByClerkUserId("uid1")).thenReturn(Optional.of(teacher));
+        when(teacherGroupRepository.findByIdAndTeacherAndActiveTrue(10L, teacher)).thenReturn(Optional.of(group));
         when(scheduleRepository.save(any(Schedule.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CreateScheduleRequest req = new CreateScheduleRequest(
-                "New Subject", Instant.now(), "10:00 - 11:30", "202", "Ćwiczenia", null, null
-        );
+        Schedule result = scheduleService.updateSchedule("id1", request(10L), "uid1");
 
-        Schedule result = scheduleService.updateSchedule("id1", req);
-
-        assertThat(result.getSubject()).isEqualTo("New Subject");
-        assertThat(result.getRoom()).isEqualTo("202");
+        assertThat(result.getSubject()).isEqualTo("Matematyka");
+        assertThat(result.getRoom()).isEqualTo("101");
+        assertThat(result.getTeacherGroup()).isSameAs(group);
     }
 
     @Test
     void updateSchedule_throws404_whenNotFound() {
         when(scheduleRepository.findById("x")).thenReturn(Optional.empty());
 
-        CreateScheduleRequest req = new CreateScheduleRequest(
-                "S", Instant.now(), "08:00 - 09:30", "1", "Wykład", null, null
-        );
-
-        assertThatThrownBy(() -> scheduleService.updateSchedule("x", req))
+        assertThatThrownBy(() -> scheduleService.updateSchedule("x", request(10L), "uid1"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                         .isEqualTo(HttpStatus.NOT_FOUND));
@@ -119,42 +127,68 @@ class ScheduleServiceWriteTest {
 
     @Test
     void updateSchedule_preservesTeacherEntity() {
-        Teacher teacher = new Teacher();
-        teacher.setId(5L);
-        teacher.setName("Original Teacher");
-
-        Schedule existing = new Schedule();
-        existing.setId("id2");
+        Teacher teacher = teacher(5L);
+        TeacherGroup group = teacherGroup(10L, teacher);
+        Schedule existing = schedule("id2", teacher);
         existing.setSubject("Old");
-        existing.setTeacherEntity(teacher);
         when(scheduleRepository.findById("id2")).thenReturn(Optional.of(existing));
+        when(teacherRepository.findByClerkUserId("uid1")).thenReturn(Optional.of(teacher));
+        when(teacherGroupRepository.findByIdAndTeacherAndActiveTrue(10L, teacher)).thenReturn(Optional.of(group));
         when(scheduleRepository.save(any(Schedule.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        CreateScheduleRequest req = new CreateScheduleRequest(
-                "New Subject", Instant.now(), "10:00 - 11:30", "202", "Ćwiczenia", null, null
-        );
-
-        Schedule result = scheduleService.updateSchedule("id2", req);
+        Schedule result = scheduleService.updateSchedule("id2", request(10L), "uid1");
 
         assertThat(result.getTeacherEntity()).isSameAs(teacher);
     }
 
     @Test
     void deleteSchedule_deletesWhenFound() {
-        when(scheduleRepository.existsById("id1")).thenReturn(true);
+        Teacher teacher = teacher(1L);
+        when(scheduleRepository.findById("id1")).thenReturn(Optional.of(schedule("id1", teacher)));
+        when(teacherRepository.findByClerkUserId("uid1")).thenReturn(Optional.of(teacher));
 
-        scheduleService.deleteSchedule("id1");
+        scheduleService.deleteSchedule("id1", "uid1");
 
         verify(scheduleRepository).deleteById("id1");
     }
 
     @Test
     void deleteSchedule_throws404_whenNotFound() {
-        when(scheduleRepository.existsById("x")).thenReturn(false);
+        when(scheduleRepository.findById("x")).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> scheduleService.deleteSchedule("x"))
+        assertThatThrownBy(() -> scheduleService.deleteSchedule("x", "uid1"))
                 .isInstanceOf(ResponseStatusException.class)
                 .satisfies(e -> assertThat(((ResponseStatusException) e).getStatusCode())
                         .isEqualTo(HttpStatus.NOT_FOUND));
+    }
+
+    private CreateScheduleRequest request(Long teacherGroupId) {
+        return new CreateScheduleRequest(
+                "Matematyka", Instant.now(), "08:00 - 09:30", "101", "Wyklad", null, teacherGroupId, null
+        );
+    }
+
+    private Teacher teacher(Long id) {
+        Teacher teacher = new Teacher();
+        teacher.setId(id);
+        teacher.setName("Jan Kowalski");
+        return teacher;
+    }
+
+    private TeacherGroup teacherGroup(Long id, Teacher teacher) {
+        TeacherGroup group = new TeacherGroup();
+        group.setId(id);
+        group.setTeacher(teacher);
+        group.setName("Matematyka 1A");
+        group.setSubject("Matematyka");
+        group.setActive(true);
+        return group;
+    }
+
+    private Schedule schedule(String id, Teacher teacher) {
+        Schedule schedule = new Schedule();
+        schedule.setId(id);
+        schedule.setTeacherEntity(teacher);
+        return schedule;
     }
 }

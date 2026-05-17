@@ -9,5 +9,6 @@ public record CreateScheduleRequest(
         String room,
         String type,
         Long studentGroupId,
+        Long teacherGroupId,
         String color
 ) {}

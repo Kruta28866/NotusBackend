@@ -2,6 +2,10 @@ package com.notus.backend.schedule;
 
 import com.notus.backend.attendance.group.StudentGroup;
 import com.notus.backend.attendance.group.StudentGroupRepository;
+import com.notus.backend.teachergroups.GroupMembershipRepository;
+import com.notus.backend.teachergroups.GroupMembershipStatus;
+import com.notus.backend.teachergroups.TeacherGroup;
+import com.notus.backend.teachergroups.TeacherGroupRepository;
 import com.notus.backend.users.Student;
 import com.notus.backend.users.Teacher;
 import com.notus.backend.users.TeacherRepository;
@@ -24,6 +28,8 @@ public class ScheduleService {
     private final ScheduleRepository scheduleRepository;
     private final TeacherRepository teacherRepository;
     private final StudentGroupRepository studentGroupRepository;
+    private final TeacherGroupRepository teacherGroupRepository;
+    private final GroupMembershipRepository groupMembershipRepository;
 
     public List<Schedule> getTodaySchedule(Long teacherId, String teacherName, Long groupId) {
         LocalDate today = LocalDate.now();
@@ -84,6 +90,20 @@ public class ScheduleService {
     }
 
     public List<Schedule> getScheduleForStudentInRange(Student student, Instant start, Instant end) {
+        if (student == null) {
+            return List.of();
+        }
+
+        List<Long> teacherGroupIds = groupMembershipRepository
+                .findByStudentAndStatusOrderByJoinedAtDesc(student, GroupMembershipStatus.ACTIVE)
+                .stream()
+                .map(membership -> membership.getGroup().getId())
+                .distinct()
+                .toList();
+        if (!teacherGroupIds.isEmpty()) {
+            return scheduleRepository.findByDateBetweenAndTeacherGroup_IdInOrderByTimeAsc(start, end, teacherGroupIds);
+        }
+
         if (student.getStudentGroups() == null || student.getStudentGroups().isEmpty()) {
             return List.of();
         }
@@ -96,6 +116,20 @@ public class ScheduleService {
     }
 
     public List<Schedule> getScheduleForStudent(Student student) {
+        if (student == null) {
+            return List.of();
+        }
+
+        List<Long> teacherGroupIds = groupMembershipRepository
+                .findByStudentAndStatusOrderByJoinedAtDesc(student, GroupMembershipStatus.ACTIVE)
+                .stream()
+                .map(membership -> membership.getGroup().getId())
+                .distinct()
+                .toList();
+        if (!teacherGroupIds.isEmpty()) {
+            return scheduleRepository.findByTeacherGroup_IdInOrderByDateAscTimeAsc(teacherGroupIds);
+        }
+
         if (student.getStudentGroups() == null || student.getStudentGroups().isEmpty()) {
             return List.of();
         }
@@ -132,6 +166,10 @@ public class ScheduleService {
         }
 
         if (groupId != null) {
+            List<Schedule> byTeacherGroup = scheduleRepository.findByDateBetweenAndTeacherGroup_IdOrderByTimeAsc(start, end, groupId);
+            if (!byTeacherGroup.isEmpty()) {
+                return byTeacherGroup;
+            }
             return scheduleRepository.findByDateBetweenAndStudentGroupIdOrderByTimeAsc(start, end, groupId);
         }
 
@@ -139,9 +177,23 @@ public class ScheduleService {
     }
 
     public List<Schedule> getTodayScheduleForStudent(Student student) {
+        if (student == null) {
+            return List.of();
+        }
+
         LocalDate today = LocalDate.now();
         Instant start = today.atStartOfDay(ZoneId.systemDefault()).toInstant();
         Instant end = today.plusDays(1).atStartOfDay(ZoneId.systemDefault()).toInstant();
+
+        List<Long> teacherGroupIds = groupMembershipRepository
+                .findByStudentAndStatusOrderByJoinedAtDesc(student, GroupMembershipStatus.ACTIVE)
+                .stream()
+                .map(membership -> membership.getGroup().getId())
+                .distinct()
+                .toList();
+        if (!teacherGroupIds.isEmpty()) {
+            return scheduleRepository.findByDateBetweenAndTeacherGroup_IdInOrderByTimeAsc(start, end, teacherGroupIds);
+        }
 
         if (student.getStudentGroups() == null || student.getStudentGroups().isEmpty()) {
             return List.of();
@@ -173,6 +225,12 @@ public class ScheduleService {
             group = studentGroupRepository.findById(req.studentGroupId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student group not found"));
         }
+        Long teacherGroupId = req.teacherGroupId() != null ? req.teacherGroupId() : req.studentGroupId();
+        if (teacherGroupId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Grupa jest wymagana przy tworzeniu lekcji");
+        }
+        TeacherGroup teacherGroup = teacherGroupRepository.findByIdAndTeacherAndActiveTrue(teacherGroupId, teacher)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Teacher group not found"));
 
         Schedule schedule = Schedule.builder()
                 .id(UUID.randomUUID().toString())
@@ -184,15 +242,21 @@ public class ScheduleService {
                 .color(req.color() != null ? req.color() : "primary")
                 .teacherEntity(teacher)
                 .studentGroup(group)
+                .teacherGroup(teacherGroup)
                 .build();
 
         return scheduleRepository.save(schedule);
     }
 
     @Transactional
-    public Schedule updateSchedule(String id, CreateScheduleRequest req) {
+    public Schedule updateSchedule(String id, CreateScheduleRequest req, String teacherUid) {
         Schedule schedule = scheduleRepository.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
+        Teacher teacher = teacherRepository.findByClerkUserId(teacherUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Teacher not found"));
+        if (schedule.getTeacherEntity() == null || !schedule.getTeacherEntity().getId().equals(teacher.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz edytować cudzych zajęć");
+        }
 
         // Full-replacement PUT semantics: null studentGroupId clears any existing group
         StudentGroup group = null;
@@ -200,6 +264,12 @@ public class ScheduleService {
             group = studentGroupRepository.findById(req.studentGroupId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Student group not found"));
         }
+        Long teacherGroupId = req.teacherGroupId() != null ? req.teacherGroupId() : req.studentGroupId();
+        if (teacherGroupId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Grupa jest wymagana przy lekcji");
+        }
+        TeacherGroup teacherGroup = teacherGroupRepository.findByIdAndTeacherAndActiveTrue(teacherGroupId, teacher)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Teacher group not found"));
 
         schedule.setSubject(req.subject());
         schedule.setDate(req.date());
@@ -208,6 +278,7 @@ public class ScheduleService {
         schedule.setType(req.type());
         schedule.setColor(req.color() != null ? req.color() : "primary");
         schedule.setStudentGroup(group);
+        schedule.setTeacherGroup(teacherGroup);
         // teacherEntity is intentionally immutable after creation — not updated here
         // TODO: enforce ownership — only the creating teacher should be allowed to modify
 
@@ -215,11 +286,14 @@ public class ScheduleService {
     }
 
     @Transactional
-    public void deleteSchedule(String id) {
-        if (!scheduleRepository.existsById(id)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found");
+    public void deleteSchedule(String id, String teacherUid) {
+        Schedule schedule = scheduleRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Schedule not found"));
+        Teacher teacher = teacherRepository.findByClerkUserId(teacherUid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.FORBIDDEN, "Teacher not found"));
+        if (schedule.getTeacherEntity() == null || !schedule.getTeacherEntity().getId().equals(teacher.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz usunąć cudzych zajęć");
         }
-        // TODO: enforce ownership — only the creating teacher should be allowed to delete
         scheduleRepository.deleteById(id);
     }
 }

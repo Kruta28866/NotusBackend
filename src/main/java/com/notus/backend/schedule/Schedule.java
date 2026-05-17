@@ -1,6 +1,7 @@
 package com.notus.backend.schedule;
 
 import com.notus.backend.attendance.group.StudentGroup;
+import com.notus.backend.teachergroups.TeacherGroup;
 import jakarta.persistence.*;
 import lombok.*;
 
@@ -36,8 +37,20 @@ public class Schedule {
     @JoinColumn(name = "student_group_id")
     private StudentGroup studentGroup;
 
+    @ManyToOne(fetch = FetchType.EAGER)
+    @JoinColumn(name = "teacher_group_id")
+    private TeacherGroup teacherGroup;
+
     @Transient
     public String getStudentGroupName() {
+        if (teacherGroup != null) {
+            return teacherGroup.getName();
+        }
         return studentGroup != null ? studentGroup.getCode() : null;
+    }
+
+    @Transient
+    public Long getTeacherGroupId() {
+        return teacherGroup != null ? teacherGroup.getId() : null;
     }
 }

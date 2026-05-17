@@ -2,6 +2,8 @@ package com.notus.backend.teachergroups;
 
 import com.notus.backend.grades.Grade;
 import com.notus.backend.grades.GradeRepository;
+import com.notus.backend.schedule.Schedule;
+import com.notus.backend.schedule.ScheduleRepository;
 import com.notus.backend.users.Role;
 import com.notus.backend.users.Student;
 import com.notus.backend.users.StudentRepository;
@@ -14,8 +16,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.util.UUID;
 
 @Component
 @RequiredArgsConstructor
@@ -32,6 +38,7 @@ public class TeacherGroupDevDataSeeder implements CommandLineRunner {
     private final TeacherGroupRepository groupRepository;
     private final GroupMembershipRepository membershipRepository;
     private final GradeRepository gradeRepository;
+    private final ScheduleRepository scheduleRepository;
 
     @Override
     @Transactional
@@ -40,26 +47,32 @@ public class TeacherGroupDevDataSeeder implements CommandLineRunner {
                 .orElseGet(this::createDevTeacher);
         Student student = studentRepository.findByClerkUserId(DEV_STUDENT_UID)
                 .orElseGet(this::createDevStudent);
-        TeacherGroup group = findOrCreateMathGroup(teacher);
 
-        GroupMembership membership = membershipRepository.findByGroupAndStudent(group, student)
-                .orElseGet(GroupMembership::new);
-        membership.setGroup(group);
-        membership.setStudent(student);
-        membership.setDisplayNameOverride(student.getName());
-        membership.setEmailOverride(student.getEmail());
-        membership.setStatus(GroupMembershipStatus.ACTIVE);
-        membership.setRemovedAt(null);
-        membershipRepository.save(membership);
+        TeacherGroup mathGroup = findOrCreateGroup(
+                teacher,
+                "Matematyka 1A",
+                "Matematyka",
+                "Grupa testowa do sprawdzania widoku ucznia, ocen i frekwencji."
+        );
+        TeacherGroup physicsGroup = findOrCreateGroup(
+                teacher,
+                "Fizyka 2B",
+                "Fizyka",
+                "Druga grupa testowa do prezentacji planu, obecnosci i quizow."
+        );
 
-        if (gradeRepository.findByGroupAndStudentAndDeletedAtIsNullOrderByGradeDateDesc(group, student).isEmpty()) {
-            seedGrade(group, student, "5", BigDecimal.valueOf(5.0), 1, "2",
-                    "Kartkówka", "Funkcje liniowe", "Bardzo dobra praca", LocalDate.now().minusDays(1), true);
-            seedGrade(group, student, "4+", BigDecimal.valueOf(4.5), 2, "2",
-                    "Sprawdzian", "Równania", "Drobne błędy rachunkowe", LocalDate.now().minusDays(5), false);
-            seedGrade(group, student, "5-", BigDecimal.valueOf(4.75), 1, "1",
-                    "Odpowiedź ustna", "Geometria", "Pewna odpowiedź", LocalDate.now().minusDays(18), false);
-            log.info("Seeded dev grades for {} in {}", DEV_STUDENT_EMAIL, group.getName());
+        ensureMembership(mathGroup, student);
+        ensureMembership(physicsGroup, student);
+        seedWeekSchedule(mathGroup, physicsGroup);
+
+        if (gradeRepository.findByGroupAndStudentAndDeletedAtIsNullOrderByGradeDateDesc(mathGroup, student).isEmpty()) {
+            seedGrade(mathGroup, student, "5", BigDecimal.valueOf(5.0), 1, "2",
+                    "Kartkowka", "Funkcje liniowe", "Bardzo dobra praca", LocalDate.now().minusDays(1), true);
+            seedGrade(mathGroup, student, "4+", BigDecimal.valueOf(4.5), 2, "2",
+                    "Sprawdzian", "Rownania", "Drobne bledy rachunkowe", LocalDate.now().minusDays(5), false);
+            seedGrade(mathGroup, student, "5-", BigDecimal.valueOf(4.75), 1, "1",
+                    "Odpowiedz ustna", "Geometria", "Pewna odpowiedz", LocalDate.now().minusDays(18), false);
+            log.info("Seeded dev grades for {} in {}", DEV_STUDENT_EMAIL, mathGroup.getName());
         }
     }
 
@@ -82,22 +95,64 @@ public class TeacherGroupDevDataSeeder implements CommandLineRunner {
         return studentRepository.save(student);
     }
 
-    private TeacherGroup findOrCreateMathGroup(Teacher teacher) {
-        return groupRepository.findByTeacherAndSubjectIgnoreCaseAndActiveTrue(teacher, "Matematyka")
+    private TeacherGroup findOrCreateGroup(Teacher teacher, String name, String subject, String description) {
+        return groupRepository.findByTeacherAndSubjectIgnoreCaseAndActiveTrue(teacher, subject)
                 .stream()
-                .filter(group -> group.getName() != null && group.getName().toLowerCase().contains("matematyka 1"))
+                .filter(group -> name.equalsIgnoreCase(group.getName()))
                 .findFirst()
                 .orElseGet(() -> {
                     TeacherGroup group = new TeacherGroup();
                     group.setTeacher(teacher);
-                    group.setName("Matematyka 1A");
-                    group.setDescription("Grupa testowa do sprawdzania widoku ucznia, ocen i frekwencji.");
-                    group.setSubject("Matematyka");
+                    group.setName(name);
+                    group.setDescription(description);
+                    group.setSubject(subject);
                     group.setSchoolYear("2025/2026");
                     group.setSemester("2");
                     group.setActive(true);
                     return groupRepository.save(group);
                 });
+    }
+
+    private void ensureMembership(TeacherGroup group, Student student) {
+        GroupMembership membership = membershipRepository.findByGroupAndStudent(group, student)
+                .orElseGet(GroupMembership::new);
+        membership.setGroup(group);
+        membership.setStudent(student);
+        membership.setDisplayNameOverride(student.getName());
+        membership.setEmailOverride(student.getEmail());
+        membership.setStatus(GroupMembershipStatus.ACTIVE);
+        membership.setRemovedAt(null);
+        membershipRepository.save(membership);
+    }
+
+    private void seedWeekSchedule(TeacherGroup mathGroup, TeacherGroup physicsGroup) {
+        if (scheduleRepository.countByTeacherGroup(mathGroup) > 0
+                || scheduleRepository.countByTeacherGroup(physicsGroup) > 0) {
+            return;
+        }
+
+        LocalDate monday = LocalDate.now().with(DayOfWeek.MONDAY);
+        TeacherGroup[] groups = {mathGroup, physicsGroup, mathGroup, physicsGroup, mathGroup, physicsGroup, mathGroup};
+        String[] times = {"08:15 - 09:45", "10:00 - 11:30", "11:45 - 13:15", "14:00 - 15:30", "08:15 - 09:45", "10:00 - 11:30", "12:00 - 13:30"};
+        String[] rooms = {"A101", "B202", "C303", "L3", "A102", "B204", "C105"};
+        String[] types = {"Cwiczenia", "Laboratorium", "Wyklad", "Cwiczenia", "Laboratorium", "Wyklad", "Konsultacje"};
+
+        for (int i = 0; i < groups.length; i++) {
+            TeacherGroup group = groups[i];
+            LocalDate day = monday.plusDays(i);
+            scheduleRepository.save(Schedule.builder()
+                    .id(UUID.randomUUID().toString())
+                    .date(day.atTime(LocalTime.NOON).atZone(ZoneId.of("Europe/Warsaw")).toInstant())
+                    .time(times[i])
+                    .subject(group.getSubject())
+                    .teacherEntity(group.getTeacher())
+                    .type(types[i])
+                    .room(rooms[i])
+                    .color(i % 2 == 0 ? "primary" : "emerald")
+                    .teacherGroup(group)
+                    .build());
+        }
+        log.info("Seeded alternating week schedule for dev groups");
     }
 
     private void seedGrade(TeacherGroup group,

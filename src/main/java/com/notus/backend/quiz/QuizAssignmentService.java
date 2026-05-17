@@ -78,8 +78,9 @@ public class QuizAssignmentService {
         Schedule schedule = scheduleRepository.findById(req.scheduleId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Zajęcia nie istnieją"));
 
-        // (Optional check) Ensure the schedule belongs to this teacher
-        // if (schedule.getTeacher() != null && !schedule.getTeacher().equals(teacher)) { ... }
+        if (schedule.getTeacherEntity() == null || !schedule.getTeacherEntity().getId().equals(teacher.getId())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Brak uprawnień do tych zajęć");
+        }
 
         if (assignmentRepository.existsByQuizIdAndScheduleId(req.quizId(), req.scheduleId())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Ten quiz jest już przypisany do tych zajęć");
@@ -481,6 +482,10 @@ public class QuizAssignmentService {
         }
 
         Schedule schedule = scheduleRepository.findById(assignment.getScheduleId()).orElse(null);
+        if (schedule != null && schedule.getTeacherGroup() != null) {
+            assertStudentInGroup(schedule.getTeacherGroup(), student);
+            return schedule.getTeacherGroup();
+        }
         if (schedule != null && schedule.getSubject() != null) {
             List<TeacherGroup> groups = teacherGroupRepository.findByTeacherAndSubjectIgnoreCaseAndActiveTrue(assignment.getTeacher(), schedule.getSubject());
             return groups.stream()

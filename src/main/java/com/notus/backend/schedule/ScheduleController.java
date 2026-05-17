@@ -150,7 +150,7 @@ public class ScheduleController {
         if (user.role() != Role.TEACHER) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can update schedule entries");
         }
-        return scheduleService.updateSchedule(id, req);
+        return scheduleService.updateSchedule(id, req, uid);
     }
 
     @DeleteMapping("/{id}")
@@ -167,6 +167,6 @@ public class ScheduleController {
         if (user.role() != Role.TEACHER) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can delete schedule entries");
         }
-        scheduleService.deleteSchedule(id);
+        scheduleService.deleteSchedule(id, uid);
     }
 }

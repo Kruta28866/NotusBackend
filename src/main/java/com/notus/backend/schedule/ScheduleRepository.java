@@ -27,7 +27,15 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
             Long groupId
     );
 
+    List<Schedule> findByDateBetweenAndTeacherGroup_IdOrderByTimeAsc(
+            Instant start,
+            Instant end,
+            Long groupId
+    );
+
     List<Schedule> findByStudentGroupIdInOrderByDateAscTimeAsc(List<Long> groupIds);
+
+    List<Schedule> findByTeacherGroup_IdInOrderByDateAscTimeAsc(List<Long> groupIds);
 
     List<Schedule> findByDateBetweenOrderByTimeAsc(Instant start, Instant end);
 
@@ -37,5 +45,12 @@ public interface ScheduleRepository extends JpaRepository<Schedule, String> {
             List<Long> groupIds
     );
 
+    List<Schedule> findByDateBetweenAndTeacherGroup_IdInOrderByTimeAsc(
+            Instant start,
+            Instant end,
+            List<Long> groupIds
+    );
+
     long countByStudentGroup(com.notus.backend.attendance.group.StudentGroup group);
+    long countByTeacherGroup(com.notus.backend.teachergroups.TeacherGroup group);
 }

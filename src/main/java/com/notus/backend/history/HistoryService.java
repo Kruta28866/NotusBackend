@@ -13,6 +13,8 @@ import com.notus.backend.quiz.QuizSubmission;
 import com.notus.backend.quiz.QuizSubmissionRepository;
 import com.notus.backend.schedule.Schedule;
 import com.notus.backend.schedule.ScheduleRepository;
+import com.notus.backend.teachergroups.GroupMembershipRepository;
+import com.notus.backend.teachergroups.GroupMembershipStatus;
 import com.notus.backend.users.Student;
 import com.notus.backend.users.StudentRepository;
 import com.notus.backend.users.Teacher;
@@ -30,6 +32,7 @@ public class HistoryService {
     private final ScheduleRepository scheduleRepository;
     private final TeacherRepository teacherRepository;
     private final StudentRepository studentRepository;
+    private final GroupMembershipRepository groupMembershipRepository;
 
     public HistoryService(AttendanceSessionRepository attendanceSessionRepository,
                           AttendanceRecordRepository attendanceRecordRepository,
@@ -37,7 +40,8 @@ public class HistoryService {
                           QuizSubmissionRepository quizSubmissionRepository,
                           ScheduleRepository scheduleRepository,
                           TeacherRepository teacherRepository,
-                          StudentRepository studentRepository) {
+                          StudentRepository studentRepository,
+                          GroupMembershipRepository groupMembershipRepository) {
         this.attendanceSessionRepository = attendanceSessionRepository;
         this.attendanceRecordRepository = attendanceRecordRepository;
         this.quizAssignmentRepository = quizAssignmentRepository;
@@ -45,6 +49,7 @@ public class HistoryService {
         this.scheduleRepository = scheduleRepository;
         this.teacherRepository = teacherRepository;
         this.studentRepository = studentRepository;
+        this.groupMembershipRepository = groupMembershipRepository;
     }
 
     public List<TeacherHistoryItemDto> getTeacherHistory(String teacherUid) {
@@ -192,7 +197,10 @@ public class HistoryService {
         Schedule schedule = scheduleRepository.findById(scheduleId).orElseThrow(() -> new RuntimeException("Schedule not found"));
         
         Set<Student> targetStudents = new HashSet<>();
-        if (schedule.getStudentGroup() != null) {
+        if (schedule.getTeacherGroup() != null) {
+            groupMembershipRepository.findByGroupAndStatusOrderByJoinedAtAsc(schedule.getTeacherGroup(), GroupMembershipStatus.ACTIVE)
+                    .forEach(membership -> targetStudents.add(membership.getStudent()));
+        } else if (schedule.getStudentGroup() != null) {
             targetStudents.addAll(studentRepository.findByStudentGroupsId(schedule.getStudentGroup().getId()));
         }
         
