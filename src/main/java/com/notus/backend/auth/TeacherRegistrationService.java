@@ -168,7 +168,7 @@ public class TeacherRegistrationService {
 
         if (studentRepository.findByClerkUserId(identity.userId()).isPresent()
                 || studentRepository.findByEmailIgnoreCase(identity.email()).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "To konto istnieje już jako student.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "To konto istnieje już jako uczeń.");
         }
 
         teacherCodeService.consumeRegistrationToken(request.registrationToken(), identity.email(), identity.userId());
@@ -194,7 +194,7 @@ public class TeacherRegistrationService {
 
     private void ensureTeacherCanBeCreated(String email) {
         if (studentRepository.findByEmailIgnoreCase(email).isPresent()) {
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "To konto istnieje już jako student.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "To konto istnieje już jako uczeń.");
         }
 
         if (teacherRepository.findByEmailIgnoreCase(email).isPresent() || localAuthUserRepository.existsByEmailIgnoreCase(email)) {

@@ -9,6 +9,7 @@ import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Value;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
@@ -28,10 +29,14 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
     private static final Logger log = LoggerFactory.getLogger(ClerkAuthFilter.class);
     private final UserService userService;
     private final AuthTokenService authTokenService;
+    private final boolean devTokensEnabled;
 
-    public ClerkAuthFilter(UserService userService, AuthTokenService authTokenService) {
+    public ClerkAuthFilter(UserService userService,
+                           AuthTokenService authTokenService,
+                           @Value("${notus.auth.dev-tokens-enabled:false}") boolean devTokensEnabled) {
         this.userService = userService;
         this.authTokenService = authTokenService;
+        this.devTokensEnabled = devTokensEnabled;
     }
 
     @Override
@@ -59,6 +64,13 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
         }
 
         if (token.startsWith("mock-dev-token:")) {
+            if (!devTokensEnabled) {
+                log.warn("Rejected mock dev token for request: {}", request.getRequestURI());
+                response.setStatus(HttpStatus.UNAUTHORIZED.value());
+                response.getWriter().write("Konta testowe są wyłączone");
+                return;
+            }
+
             String payload = token.substring("mock-dev-token:".length());
             String[] parts = payload.split(":", 2);
             String roleHint = parts.length == 2 ? parts[0] : null;

@@ -10,6 +10,7 @@ import com.notus.backend.users.Student;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,6 +21,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Component
+@ConditionalOnProperty(name = "notus.seed.sample-schedule-enabled", havingValue = "true")
 @RequiredArgsConstructor
 @Slf4j
 public class ScheduleDataSeeder implements CommandLineRunner {

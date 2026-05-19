@@ -15,6 +15,14 @@ services:
         generateValue: true
       - key: INITIAL_TEACHER_CODE
         sync: false
+      - key: DEV_AUTH_TOKENS_ENABLED
+        value: "false"
+      - key: DEV_DATA_SEED_ENABLED
+        value: "false"
+      - key: SAMPLE_SCHEDULE_SEED_ENABLED
+        value: "false"
+      - key: SAMPLE_QUIZ_SEED_ENABLED
+        value: "false"
       - key: CORS_ALLOWED_ORIGIN_PATTERNS
         value: https://your-vercel-app.vercel.app
       - key: APP_FRONTEND_BASE_URL
