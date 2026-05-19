@@ -23,16 +23,16 @@ public class ScheduleController {
     private final UserService userService;
 
     @GetMapping("/today")
-    public List<Schedule> getTodaySchedule(
+    public List<ScheduleResponse> getTodaySchedule(
             @RequestParam(required = false) Long teacherId,
             @RequestParam(required = false) String teacherName,
             @RequestParam(required = false) Long groupId
     ) {
-        return scheduleService.getTodaySchedule(teacherId, teacherName, groupId);
+        return toResponse(scheduleService.getTodaySchedule(teacherId, teacherName, groupId));
     }
 
     @GetMapping("/teacher/today")
-    public List<Schedule> getTeacherTodaySchedule(
+    public List<ScheduleResponse> getTeacherTodaySchedule(
             Authentication auth,
             HttpServletRequest request
     ) {
@@ -49,16 +49,16 @@ public class ScheduleController {
             );
         }
 
-        return scheduleService.getTodaySchedule(user.id(), null, null);
+        return toResponse(scheduleService.getTodaySchedule(user.id(), null, null));
     }
 
     @GetMapping("/by-day")
-    public List<Schedule> getScheduleByDay(@RequestParam String date) {
-        return scheduleService.getScheduleByDay(LocalDate.parse(date));
+    public List<ScheduleResponse> getScheduleByDay(@RequestParam String date) {
+        return toResponse(scheduleService.getScheduleByDay(LocalDate.parse(date)));
     }
 
     @GetMapping("/day/{date}")
-    public List<Schedule> getScheduleByDayPath(
+    public List<ScheduleResponse> getScheduleByDayPath(
             Authentication auth,
             HttpServletRequest request,
             @PathVariable String date
@@ -73,14 +73,14 @@ public class ScheduleController {
 
         if (user.role() == Role.STUDENT) {
             com.notus.backend.users.Student student = userService.findStudentWithGroupsByUid(uid).orElse(null);
-            return scheduleService.getScheduleForStudentInRange(student, start, end);
+            return toResponse(scheduleService.getScheduleForStudentInRange(student, start, end));
         } else {
-            return scheduleService.getSchedule(start, end, user.id(), null, null);
+            return toResponse(scheduleService.getSchedule(start, end, user.id(), null, null));
         }
     }
 
     @GetMapping("/next")
-    public Schedule getNextSchedule(
+    public ScheduleResponse getNextSchedule(
             Authentication auth,
             HttpServletRequest request
     ) {
@@ -91,37 +91,37 @@ public class ScheduleController {
 
         if (user.role() == Role.STUDENT) {
             com.notus.backend.users.Student student = userService.findStudentWithGroupsByUid(uid).orElse(null);
-            return scheduleService.getNextSchedule(null, null, null, student);
+            return ScheduleResponse.from(scheduleService.getNextSchedule(null, null, null, student));
         } else {
-            return scheduleService.getNextSchedule(user.id(), null, null, null);
+            return ScheduleResponse.from(scheduleService.getNextSchedule(user.id(), null, null, null));
         }
     }
 
     @GetMapping
-    public List<Schedule> getSchedule(
+    public List<ScheduleResponse> getSchedule(
             @RequestParam String start,
             @RequestParam String end,
             @RequestParam(required = false) Long teacherId,
             @RequestParam(required = false) String teacherName,
             @RequestParam(required = false) Long groupId
     ) {
-        return scheduleService.getSchedule(
+        return toResponse(scheduleService.getSchedule(
                 Instant.parse(start),
                 Instant.parse(end),
                 teacherId,
                 teacherName,
                 groupId
-        );
+        ));
     }
 
     @GetMapping("/{id}")
-    public Schedule getById(@PathVariable String id) {
-        return scheduleService.getById(id);
+    public ScheduleResponse getById(@PathVariable String id) {
+        return ScheduleResponse.from(scheduleService.getById(id));
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
-    public Schedule create(
+    public ScheduleResponse create(
             Authentication auth,
             HttpServletRequest request,
             @RequestBody CreateScheduleRequest req
@@ -133,11 +133,11 @@ public class ScheduleController {
         if (user.role() != Role.TEACHER) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can create schedule entries");
         }
-        return scheduleService.createSchedule(req, uid);
+        return ScheduleResponse.from(scheduleService.createSchedule(req, uid));
     }
 
     @PutMapping("/{id}")
-    public Schedule update(
+    public ScheduleResponse update(
             Authentication auth,
             HttpServletRequest request,
             @PathVariable String id,
@@ -150,7 +150,7 @@ public class ScheduleController {
         if (user.role() != Role.TEACHER) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can update schedule entries");
         }
-        return scheduleService.updateSchedule(id, req, uid);
+        return ScheduleResponse.from(scheduleService.updateSchedule(id, req, uid));
     }
 
     @DeleteMapping("/{id}")
@@ -168,5 +168,9 @@ public class ScheduleController {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Only teachers can delete schedule entries");
         }
         scheduleService.deleteSchedule(id, uid);
+    }
+
+    private List<ScheduleResponse> toResponse(List<Schedule> schedules) {
+        return schedules.stream().map(ScheduleResponse::from).toList();
     }
 }
