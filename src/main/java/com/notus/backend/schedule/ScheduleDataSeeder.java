@@ -5,8 +5,6 @@ import com.notus.backend.attendance.group.StudentGroupRepository;
 import com.notus.backend.attendance.group.StudentGroupType;
 import com.notus.backend.users.Teacher;
 import com.notus.backend.users.TeacherRepository;
-import com.notus.backend.users.StudentRepository;
-import com.notus.backend.users.Student;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
@@ -16,8 +14,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.UUID;
 
 @Component
@@ -29,7 +25,6 @@ public class ScheduleDataSeeder implements CommandLineRunner {
     private final ScheduleRepository scheduleRepository;
     private final StudentGroupRepository studentGroupRepository;
     private final TeacherRepository teacherRepository;
-    private final StudentRepository studentRepository;
 
     @Override
     @Transactional
@@ -105,17 +100,6 @@ public class ScheduleDataSeeder implements CommandLineRunner {
                     .build());
         }
 
-        // 4. Assign ALL existing students to this group so they see the data
-        List<Student> students = studentRepository.findAll();
-        log.info("Checking {} students for group assignments...", students.size());
-        for (Student s : students) {
-            if (s.getStudentGroups() == null || s.getStudentGroups().isEmpty()) {
-                log.info("Assigning group {} to student {}", group.getCode(), s.getEmail());
-                List<StudentGroup> groups = new ArrayList<>();
-                groups.add(group);
-                s.setStudentGroups(groups);
-                studentRepository.save(s);
-            }
-        }
+        log.info("Sample schedule seeding finished without auto-assigning students to legacy groups.");
     }
 }

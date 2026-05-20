@@ -7,40 +7,48 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
+import java.util.Locale;
+import java.util.regex.Pattern;
 
 @Service
 public class UserService {
 
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[0-9\\s()\\-]{6,24}$");
+
     private final StudentRepository studentRepo;
     private final TeacherRepository teacherRepo;
-    private final com.notus.backend.attendance.group.StudentGroupRepository studentGroupRepo;
     private final TeacherCodeService teacherCodeService;
+    private final AppUserIdentityService appUserIdentityService;
 
     public UserService(StudentRepository studentRepo,
                        TeacherRepository teacherRepo,
-                       com.notus.backend.attendance.group.StudentGroupRepository studentGroupRepo,
-                       TeacherCodeService teacherCodeService) {
+                       TeacherCodeService teacherCodeService,
+                       AppUserIdentityService appUserIdentityService) {
         this.studentRepo = studentRepo;
         this.teacherRepo = teacherRepo;
-        this.studentGroupRepo = studentGroupRepo;
         this.teacherCodeService = teacherCodeService;
+        this.appUserIdentityService = appUserIdentityService;
     }
 
     @Transactional
     public UserDto findOrCreate(String clerkUserId, String email, String name) {
-        Optional<Teacher> existingTeacher = teacherRepo.findByClerkUserId(clerkUserId);
+        String normalizedEmail = normalizeEmail(email);
+
+        Optional<Teacher> existingTeacher = teacherRepo.findByClerkUserId(clerkUserId)
+                .or(() -> normalizedEmail == null ? Optional.empty() : teacherRepo.findByEmailIgnoreCase(normalizedEmail));
         if (existingTeacher.isPresent()) {
             Teacher teacher = existingTeacher.get();
-            updateTeacherData(teacher, email, name);
-            teacher = teacherRepo.save(teacher);
+            updateTeacherData(teacher, normalizedEmail, name);
+            teacher = saveTeacherWithIdentity(teacher);
             return mapTeacherToDto(teacher);
         }
 
-        Optional<Student> existingStudent = studentRepo.findByClerkUserId(clerkUserId);
+        Optional<Student> existingStudent = studentRepo.findByClerkUserId(clerkUserId)
+                .or(() -> normalizedEmail == null ? Optional.empty() : studentRepo.findByEmailIgnoreCase(normalizedEmail));
         if (existingStudent.isPresent()) {
             Student student = existingStudent.get();
-            updateStudentData(student, email, name);
-            student = studentRepo.save(student);
+            updateStudentData(student, normalizedEmail, name, null);
+            student = saveStudentWithIdentity(student);
             return mapStudentToDto(student);
         }
 
@@ -49,7 +57,18 @@ public class UserService {
 
     @Transactional
     public UserDto findOrCreate(String clerkUserId, String email, String name, Role requestedRole, String providedTeacherAccessCode) {
-        Optional<UserDto> existingUser = findExistingByUid(clerkUserId);
+        return findOrCreate(clerkUserId, email, name, requestedRole, providedTeacherAccessCode, null);
+    }
+
+    @Transactional
+    public UserDto findOrCreate(String clerkUserId,
+                                String email,
+                                String name,
+                                Role requestedRole,
+                                String providedTeacherAccessCode,
+                                String phoneNumber) {
+        String normalizedEmail = normalizeEmail(email);
+        Optional<UserDto> existingUser = findExistingByIdentity(clerkUserId, normalizedEmail);
         if (existingUser.isPresent()) {
             UserDto user = existingUser.get();
 
@@ -61,7 +80,15 @@ public class UserService {
                 teacherCodeService.validateCode(providedTeacherAccessCode);
             }
 
-            return findOrCreate(clerkUserId, email, name);
+            if (user.role() == Role.STUDENT) {
+                Student student = studentRepo.findByClerkUserId(clerkUserId)
+                        .or(() -> normalizedEmail == null ? Optional.empty() : studentRepo.findByEmailIgnoreCase(normalizedEmail))
+                        .orElseThrow();
+                updateStudentData(student, normalizedEmail, name, phoneNumber);
+                return mapStudentToDto(saveStudentWithIdentity(student));
+            }
+
+            return findOrCreate(clerkUserId, normalizedEmail, name);
         }
 
         if (requestedRole == null) {
@@ -69,13 +96,15 @@ public class UserService {
         }
 
         if (requestedRole == Role.TEACHER) {
+            ensureNoStudentWithEmail(normalizedEmail);
             teacherCodeService.consumeCode(providedTeacherAccessCode);
-            Teacher teacher = createTeacher(clerkUserId, email, name);
+            Teacher teacher = createTeacher(clerkUserId, normalizedEmail, name);
             return mapTeacherToDto(teacher);
         }
 
         if (requestedRole == Role.STUDENT) {
-            Student student = createStudent(clerkUserId, email, name);
+            ensureNoTeacherWithEmail(normalizedEmail);
+            Student student = createStudent(clerkUserId, normalizedEmail, name, phoneNumber);
             return mapStudentToDto(student);
         }
 
@@ -90,6 +119,51 @@ public class UserService {
         }
 
         return studentRepo.findByClerkUserId(clerkUserId).map(this::mapStudentToDto);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<UserDto> findExistingByIdentity(String clerkUserId, String email) {
+        Optional<UserDto> byUid = findExistingByUid(clerkUserId);
+        if (byUid.isPresent()) {
+            return byUid;
+        }
+
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail == null) {
+            return Optional.empty();
+        }
+
+        Optional<Teacher> teacher = teacherRepo.findByEmailIgnoreCase(normalizedEmail);
+        if (teacher.isPresent()) {
+            return teacher.map(this::mapTeacherToDto);
+        }
+
+        return studentRepo.findByEmailIgnoreCase(normalizedEmail).map(this::mapStudentToDto);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<String> resolvePrincipalUserId(String clerkUserId, String email) {
+        Optional<Teacher> teacherByUid = teacherRepo.findByClerkUserId(clerkUserId);
+        if (teacherByUid.isPresent()) {
+            return teacherByUid.map(Teacher::getClerkUserId);
+        }
+
+        Optional<Student> studentByUid = studentRepo.findByClerkUserId(clerkUserId);
+        if (studentByUid.isPresent()) {
+            return studentByUid.map(Student::getClerkUserId);
+        }
+
+        String normalizedEmail = normalizeEmail(email);
+        if (normalizedEmail == null) {
+            return Optional.empty();
+        }
+
+        Optional<Teacher> teacherByEmail = teacherRepo.findByEmailIgnoreCase(normalizedEmail);
+        if (teacherByEmail.isPresent()) {
+            return teacherByEmail.map(Teacher::getClerkUserId);
+        }
+
+        return studentRepo.findByEmailIgnoreCase(normalizedEmail).map(Student::getClerkUserId);
     }
 
     public Optional<Student> findStudentByUid(String uid) {
@@ -114,19 +188,18 @@ public class UserService {
         Optional<Student> existingByUid = studentRepo.findByClerkUserId(clerkUserId);
         if (existingByUid.isPresent()) {
             Student student = existingByUid.get();
-            updateStudentData(student, email, name);
-            return studentRepo.save(student);
+            updateStudentData(student, email, name, null);
+            return saveStudentWithIdentity(student);
         }
 
         Optional<Student> existingByEmail = studentRepo.findByEmailIgnoreCase(email);
         if (existingByEmail.isPresent()) {
             Student student = existingByEmail.get();
-            student.setClerkUserId(clerkUserId);
-            updateStudentData(student, email, name);
-            return studentRepo.save(student);
+            updateStudentData(student, email, name, null);
+            return saveStudentWithIdentity(student);
         }
 
-        return createStudent(clerkUserId, email, name);
+        return createStudent(clerkUserId, email, name, null);
     }
 
     public Optional<Student> findStudentWithGroupsByUid(String uid) {
@@ -137,20 +210,15 @@ public class UserService {
         return teacherRepo.findByClerkUserId(uid);
     }
 
-    private Student createStudent(String clerkUserId, String email, String name) {
+    private Student createStudent(String clerkUserId, String email, String name, String phoneNumber) {
         Student student = new Student();
         student.setClerkUserId(clerkUserId);
         student.setEmail(resolveEmail(clerkUserId, email));
         student.setName(resolveName(email, name));
         student.setRole(Role.STUDENT);
         student.setIndexNumber(resolveIndexNumber(email));
-        
-        // Auto-assign to default group if exists
-        studentGroupRepo.findByCode("INF-2024-SEM2").ifPresent(group -> {
-            student.setStudentGroups(java.util.List.of(group));
-        });
-        
-        return studentRepo.save(student);
+        student.setPhoneNumber(normalizePhone(phoneNumber));
+        return saveStudentWithIdentity(student);
     }
 
     private Teacher createTeacher(String clerkUserId, String email, String name) {
@@ -159,16 +227,30 @@ public class UserService {
         teacher.setEmail(resolveEmail(clerkUserId, email));
         teacher.setName(resolveName(email, name));
         teacher.setRole(Role.TEACHER);
+        return saveTeacherWithIdentity(teacher);
+    }
+
+    private Student saveStudentWithIdentity(Student student) {
+        student.setUser(appUserIdentityService.ensureForStudent(student));
+        return studentRepo.save(student);
+    }
+
+    private Teacher saveTeacherWithIdentity(Teacher teacher) {
+        teacher.setUser(appUserIdentityService.ensureForTeacher(teacher));
         return teacherRepo.save(teacher);
     }
 
-    private void updateStudentData(Student student, String email, String name) {
+    private void updateStudentData(Student student, String email, String name, String phoneNumber) {
         if (email != null && !email.isBlank()) {
-            student.setEmail(email);
+            student.setEmail(normalizeEmail(email));
         }
 
         student.setName(resolveName(student.getEmail(), name));
         student.setIndexNumber(resolveIndexNumber(student.getEmail()));
+        String normalizedPhone = normalizePhone(phoneNumber);
+        if (normalizedPhone != null) {
+            student.setPhoneNumber(normalizedPhone);
+        }
     }
 
     private void updateTeacherData(Teacher teacher, String email, String name) {
@@ -185,7 +267,8 @@ public class UserService {
                 student.getEmail(),
                 student.getName(),
                 student.getRole(),
-                student.getIndexNumber()
+                student.getIndexNumber(),
+                student.getPhoneNumber()
         );
     }
 
@@ -195,15 +278,47 @@ public class UserService {
                 teacher.getEmail(),
                 teacher.getName(),
                 teacher.getRole(),
+                null,
                 null
         );
     }
 
     private String resolveEmail(String clerkUserId, String email) {
-        if (email != null && !email.isBlank()) {
-            return email;
+        String normalized = normalizeEmail(email);
+        if (normalized != null) {
+            return normalized;
         }
         return clerkUserId + "@temporary.com";
+    }
+
+    private String normalizeEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return null;
+        }
+        return email.trim().toLowerCase(Locale.ROOT);
+    }
+
+    private String normalizePhone(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            return null;
+        }
+        String trimmed = phoneNumber.trim();
+        if (!PHONE_PATTERN.matcher(trimmed).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Podaj poprawny numer telefonu.");
+        }
+        return trimmed;
+    }
+
+    private void ensureNoTeacherWithEmail(String email) {
+        if (email != null && teacherRepo.findByEmailIgnoreCase(email).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "To konto istnieje już jako nauczyciel.");
+        }
+    }
+
+    private void ensureNoStudentWithEmail(String email) {
+        if (email != null && studentRepo.findByEmailIgnoreCase(email).isPresent()) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "To konto istnieje już jako uczeń.");
+        }
     }
 
     private boolean hasText(String value) {

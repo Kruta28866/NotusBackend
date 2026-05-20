@@ -1,9 +1,9 @@
 package com.notus.backend.auth;
 
-import com.notus.backend.attendance.group.StudentGroupRepository;
 import com.notus.backend.auth.dto.LoginRequest;
 import com.notus.backend.auth.dto.StudentRegisterRequest;
 import com.notus.backend.auth.dto.TeacherAuthResponse;
+import com.notus.backend.users.AppUserIdentityService;
 import com.notus.backend.users.Role;
 import com.notus.backend.users.Student;
 import com.notus.backend.users.StudentRepository;
@@ -15,32 +15,34 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 @Service
 public class StudentRegistrationService {
 
+    private static final Pattern PHONE_PATTERN = Pattern.compile("^\\+?[0-9\\s()\\-]{6,24}$");
+
     private final LocalAuthUserRepository localAuthUserRepository;
     private final StudentRepository studentRepository;
     private final TeacherRepository teacherRepository;
-    private final StudentGroupRepository studentGroupRepository;
     private final PasswordEncoder passwordEncoder;
     private final AuthTokenService authTokenService;
+    private final AppUserIdentityService appUserIdentityService;
 
     public StudentRegistrationService(LocalAuthUserRepository localAuthUserRepository,
                                       StudentRepository studentRepository,
                                       TeacherRepository teacherRepository,
-                                      StudentGroupRepository studentGroupRepository,
                                       PasswordEncoder passwordEncoder,
-                                      AuthTokenService authTokenService) {
+                                      AuthTokenService authTokenService,
+                                      AppUserIdentityService appUserIdentityService) {
         this.localAuthUserRepository = localAuthUserRepository;
         this.studentRepository = studentRepository;
         this.teacherRepository = teacherRepository;
-        this.studentGroupRepository = studentGroupRepository;
         this.passwordEncoder = passwordEncoder;
         this.authTokenService = authTokenService;
+        this.appUserIdentityService = appUserIdentityService;
     }
 
     @Transactional
@@ -58,7 +60,7 @@ public class StudentRegistrationService {
         authUser.setEmailVerified(true);
         localAuthUserRepository.save(authUser);
 
-        Student student = createStudent(authUserId, email, request.name());
+        Student student = createStudent(authUserId, email, request.name(), request.phoneNumber());
         return new TeacherAuthResponse(
                 authTokenService.issueLocalToken(authUserId, email),
                 mapStudent(student),
@@ -68,7 +70,7 @@ public class StudentRegistrationService {
         );
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TeacherAuthResponse login(LoginRequest request) {
         String email = normalizeEmail(request.email());
         LocalAuthUser authUser = localAuthUserRepository.findByEmailIgnoreCase(email)
@@ -80,6 +82,8 @@ public class StudentRegistrationService {
 
         Student student = studentRepository.findByClerkUserId(authUser.getAuthUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "To konto nie jest kontem ucznia"));
+        student.setUser(appUserIdentityService.ensureForStudent(student));
+        student = studentRepository.save(student);
 
         return new TeacherAuthResponse(
                 authTokenService.issueLocalToken(authUser.getAuthUserId(), authUser.getEmail()),
@@ -90,15 +94,15 @@ public class StudentRegistrationService {
         );
     }
 
-    private Student createStudent(String authUserId, String email, String name) {
+    private Student createStudent(String authUserId, String email, String name, String phoneNumber) {
         Student student = new Student();
         student.setClerkUserId(authUserId);
         student.setEmail(email);
         student.setName(resolveName(email, name));
         student.setRole(Role.STUDENT);
         student.setIndexNumber(resolveIndexNumber(email));
-        studentGroupRepository.findByCode("INF-2024-SEM2")
-                .ifPresent(group -> student.setStudentGroups(List.of(group)));
+        student.setPhoneNumber(normalizePhone(phoneNumber));
+        student.setUser(appUserIdentityService.ensureForStudent(student));
         return studentRepository.save(student);
     }
 
@@ -118,7 +122,8 @@ public class StudentRegistrationService {
                 student.getEmail(),
                 student.getName(),
                 student.getRole(),
-                student.getIndexNumber()
+                student.getIndexNumber(),
+                student.getPhoneNumber()
         );
     }
 
@@ -159,5 +164,16 @@ public class StudentRegistrationService {
             }
         }
         return null;
+    }
+
+    private String normalizePhone(String phoneNumber) {
+        if (phoneNumber == null || phoneNumber.isBlank()) {
+            return null;
+        }
+        String trimmed = phoneNumber.trim();
+        if (!PHONE_PATTERN.matcher(trimmed).matches()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Podaj poprawny numer telefonu.");
+        }
+        return trimmed;
     }
 }

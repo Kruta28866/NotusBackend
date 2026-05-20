@@ -45,9 +45,21 @@ public class TeacherGroupService {
 
     @Transactional
     public TeacherGroupResponse create(String teacherUid, CreateTeacherGroupRequest request) {
+        Teacher teacher = currentTeacher(teacherUid);
+        String name = trimRequired(request.name(), "Nazwa grupy jest wymagana.");
+        String description = trimToNull(request.description());
+        String subject = trimToNull(request.subject());
+        String schoolYear = trimToNull(request.schoolYear());
+        String semester = trimToNull(request.semester());
+
+        List<TeacherGroup> duplicates = groupRepository.findActiveDuplicates(teacher, name, subject, schoolYear, semester);
+        if (!duplicates.isEmpty()) {
+            return toResponse(duplicates.getFirst());
+        }
+
         TeacherGroup group = new TeacherGroup();
-        group.setTeacher(currentTeacher(teacherUid));
-        apply(group, request.name(), request.description(), request.subject(), request.schoolYear(), request.semester());
+        group.setTeacher(teacher);
+        apply(group, name, description, subject, schoolYear, semester);
         return toResponse(groupRepository.save(group));
     }
 

@@ -29,6 +29,10 @@ public class Teacher {
     @Column(nullable = false)
     private String name;
 
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", unique = true)
+    private AppUser user;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private Role role = Role.TEACHER;

@@ -50,6 +50,17 @@ public class ScheduleService {
         return getFilteredSchedule(start, end, teacherId, teacherName, groupId);
     }
 
+    public void assertTeacherGroupOwned(Long groupId, Long teacherId) {
+        if (groupId == null) {
+            return;
+        }
+        TeacherGroup group = teacherGroupRepository.findById(groupId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Teacher group not found"));
+        if (group.getTeacher() == null || !group.getTeacher().getId().equals(teacherId)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz pobrać planu cudzej grupy.");
+        }
+    }
+
     public Schedule getNextSchedule(Long teacherId, String teacherName, Long groupId, Student student) {
         Instant now = Instant.now();
         Instant end = now.plus(java.time.Duration.ofDays(7));

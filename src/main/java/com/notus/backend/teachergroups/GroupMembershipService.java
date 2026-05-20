@@ -170,10 +170,6 @@ public class GroupMembershipService {
             return;
         }
 
-        Instant acceptedAt = acceptedInvitation.getAcceptedAt() != null
-                ? acceptedInvitation.getAcceptedAt()
-                : Instant.now();
-
         invitationRepository
                 .findByGroupAndEmailIgnoreCaseOrderByCreatedAtDesc(
                         acceptedInvitation.getGroup(),
@@ -183,9 +179,9 @@ public class GroupMembershipService {
                 .filter(invitation -> !Objects.equals(invitation.getId(), acceptedInvitation.getId()))
                 .filter(invitation -> invitation.getStatus() == GroupInvitationStatus.PENDING)
                 .forEach(invitation -> {
-                    invitation.setStatus(GroupInvitationStatus.ACCEPTED);
-                    invitation.setAcceptedAt(acceptedAt);
-                    invitation.setAcceptedBy(student);
+                    invitation.setStatus(GroupInvitationStatus.CANCELLED);
+                    invitation.setAcceptedAt(null);
+                    invitation.setAcceptedBy(null);
                     invitationRepository.save(invitation);
                 });
     }

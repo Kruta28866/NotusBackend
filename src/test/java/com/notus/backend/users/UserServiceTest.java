@@ -1,6 +1,5 @@
 package com.notus.backend.users;
 
-import com.notus.backend.attendance.group.StudentGroupRepository;
 import com.notus.backend.users.teachercode.TeacherCodeService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -11,10 +10,8 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertThrows;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class UserServiceTest {
@@ -26,16 +23,16 @@ class UserServiceTest {
     private TeacherRepository teacherRepository;
 
     @Mock
-    private StudentGroupRepository studentGroupRepository;
+    private TeacherCodeService teacherCodeService;
 
     @Mock
-    private TeacherCodeService teacherCodeService;
+    private AppUserIdentityService appUserIdentityService;
 
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(studentRepository, teacherRepository, studentGroupRepository, teacherCodeService);
+        userService = new UserService(studentRepository, teacherRepository, teacherCodeService, appUserIdentityService);
     }
 
     @Test
@@ -69,6 +66,46 @@ class UserServiceTest {
                 Role.TEACHER,
                 "VALID-CODE"
         ));
+    }
+
+    @Test
+    void existingTeacherIsResolvedByEmailWhenProviderSubjectDiffers() {
+        Teacher teacher = teacher("local-teacher", "teacher@example.com");
+        when(teacherRepository.findByClerkUserId("google-teacher")).thenReturn(Optional.empty());
+        when(teacherRepository.findByEmailIgnoreCase("teacher@example.com")).thenReturn(Optional.of(teacher));
+        when(teacherRepository.save(teacher)).thenReturn(teacher);
+
+        UserDto result = userService.findOrCreate("google-teacher", "Teacher@Example.com", "Teacher");
+
+        assertEquals(Role.TEACHER, result.role());
+        assertEquals("teacher@example.com", result.email());
+    }
+
+    @Test
+    void studentRegistrationStoresPhoneNumber() {
+        when(teacherRepository.findByClerkUserId("student-uid")).thenReturn(Optional.empty());
+        when(studentRepository.findByClerkUserId("student-uid")).thenReturn(Optional.empty());
+        when(teacherRepository.findByEmailIgnoreCase("student@example.com")).thenReturn(Optional.empty());
+        when(studentRepository.findByEmailIgnoreCase("student@example.com")).thenReturn(Optional.empty());
+        when(studentRepository.save(any(Student.class))).thenAnswer(invocation -> {
+            Student saved = invocation.getArgument(0);
+            saved.setId(2L);
+            return saved;
+        });
+
+        UserDto result = userService.findOrCreate(
+                "student-uid",
+                "student@example.com",
+                "Student",
+                Role.STUDENT,
+                null,
+                "+48 123 456 789"
+        );
+
+        assertEquals(Role.STUDENT, result.role());
+        assertEquals("+48 123 456 789", result.phoneNumber());
+        verify(studentRepository).save(any(Student.class));
+        verify(appUserIdentityService).ensureForStudent(any(Student.class));
     }
 
     private Teacher teacher(String clerkUserId, String email) {

@@ -5,5 +5,6 @@ public record UserDto(
         String email,
         String name,
         Role role,
-        String indexNumber
+        String indexNumber,
+        String phoneNumber
 ) {}

@@ -79,11 +79,12 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
             
             request.setAttribute("clerk_email", email);
             request.setAttribute("clerk_name", "Dev User (" + email + ")");
+            String effectivePrincipal = userService.resolvePrincipalUserId(userId, email).orElse(userId);
             
             var auth = new UsernamePasswordAuthenticationToken(
-                    userId,
+                    effectivePrincipal,
                     null,
-                    authoritiesFor(userId, roleHint)
+                    authoritiesFor(effectivePrincipal, email, roleHint)
             );
             SecurityContextHolder.getContext().setAuthentication(auth);
             chain.doFilter(request, response);
@@ -129,10 +130,11 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
             }
 
             // We use a generic ROLE_USER here; the controller will perform detailed role checks via UserService
+            String effectivePrincipal = userService.resolvePrincipalUserId(userId, email).orElse(userId);
             var auth = new UsernamePasswordAuthenticationToken(
-                    userId,
+                    effectivePrincipal,
                     null,
-                    authoritiesFor(userId, null)
+                    authoritiesFor(effectivePrincipal, email, null)
             );
 
             SecurityContextHolder.getContext().setAuthentication(auth);
@@ -160,10 +162,11 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
             request.setAttribute("clerk_email", email);
             userService.findExistingByUid(userId).ifPresent(user -> request.setAttribute("clerk_name", user.name()));
 
+            String effectivePrincipal = userService.resolvePrincipalUserId(userId, email).orElse(userId);
             var auth = new UsernamePasswordAuthenticationToken(
-                    userId,
+                    effectivePrincipal,
                     null,
-                    authoritiesFor(userId, null)
+                    authoritiesFor(effectivePrincipal, email, null)
             );
             SecurityContextHolder.getContext().setAuthentication(auth);
             return true;
@@ -172,11 +175,11 @@ public class ClerkAuthFilter extends OncePerRequestFilter {
         }
     }
 
-    private List<SimpleGrantedAuthority> authoritiesFor(String userId, String roleHint) {
+    private List<SimpleGrantedAuthority> authoritiesFor(String userId, String email, String roleHint) {
         List<SimpleGrantedAuthority> authorities = new ArrayList<>();
         authorities.add(new SimpleGrantedAuthority("ROLE_USER"));
 
-        userService.findExistingByUid(userId)
+        userService.findExistingByIdentity(userId, email)
                 .map(UserDto::role)
                 .or(() -> parseRole(roleHint))
                 .ifPresent(role -> authorities.add(new SimpleGrantedAuthority("ROLE_" + role.name())));

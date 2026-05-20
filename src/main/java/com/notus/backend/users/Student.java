@@ -39,6 +39,13 @@ public class Student {
     @Column(name = "index_number")
     private String indexNumber;
 
+    @Column(name = "phone_number")
+    private String phoneNumber;
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", unique = true)
+    private AppUser user;
+
     @ManyToMany
     @JoinTable(
             name = "student_groups_assignments",

@@ -6,6 +6,7 @@ import com.notus.backend.auth.dto.LoginRequest;
 import com.notus.backend.auth.dto.TeacherAuthResponse;
 import com.notus.backend.auth.dto.TeacherGoogleRegisterRequest;
 import com.notus.backend.auth.dto.TeacherRegisterRequest;
+import com.notus.backend.users.AppUserIdentityService;
 import com.notus.backend.users.Role;
 import com.notus.backend.users.Student;
 import com.notus.backend.users.StudentRepository;
@@ -49,6 +50,8 @@ class TeacherRegistrationServiceTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private EmailVerificationService emailVerificationService;
+    @Mock
+    private AppUserIdentityService appUserIdentityService;
 
     private TeacherRegistrationService service;
 
@@ -62,7 +65,8 @@ class TeacherRegistrationServiceTest {
                 passwordEncoder,
                 new AuthTokenService("test-secret"),
                 new HashService(),
-                emailVerificationService
+                emailVerificationService,
+                appUserIdentityService
         );
     }
 
@@ -124,6 +128,7 @@ class TeacherRegistrationServiceTest {
         when(localAuthUserRepository.findByEmailIgnoreCase("teacher@example.com")).thenReturn(Optional.of(authUser));
         when(passwordEncoder.matches("StrongPass1", "hashed")).thenReturn(true);
         when(teacherRepository.findByClerkUserId("local-1")).thenReturn(Optional.of(teacher));
+        when(teacherRepository.save(teacher)).thenReturn(teacher);
 
         TeacherAuthResponse response = service.login(new LoginRequest("teacher@example.com", "StrongPass1"));
 

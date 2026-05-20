@@ -52,7 +52,7 @@ public class TeacherStudentSummaryService {
         TeacherGroup group = groupService.requireOwnedGroup(teacherUid, groupId);
         GroupMembership membership = membershipService.requireActiveMembership(group, studentId);
         Student student = membership.getStudent();
-        List<AttendanceSession> sessions = sessionRepository.findByTeacher(group.getTeacher()).stream()
+        List<AttendanceSession> sessions = sessionsForGroup(group).stream()
                 .sorted(Comparator.comparing(AttendanceSession::getCreatedAt).reversed())
                 .toList();
 
@@ -130,7 +130,7 @@ public class TeacherStudentSummaryService {
 
     private StudentAttendanceTableResponse attendanceForMembership(TeacherGroup group, GroupMembership membership) {
         Student student = membership.getStudent();
-        List<StudentAttendanceRowResponse> items = sessionRepository.findByTeacher(group.getTeacher()).stream()
+        List<StudentAttendanceRowResponse> items = sessionsForGroup(group).stream()
                 .map(session -> new StudentAttendanceRowResponse(
                         session.getId(),
                         toLocalDate(session),
@@ -139,6 +139,27 @@ public class TeacherStudentSummaryService {
                 ))
                 .toList();
         return new StudentAttendanceTableResponse(student.getId(), displayName(membership), calculateAttendancePercentage(items), items);
+    }
+
+    private List<AttendanceSession> sessionsForGroup(TeacherGroup group) {
+        List<AttendanceSession> allTeacherSessions = sessionRepository.findByTeacher(group.getTeacher());
+        List<AttendanceSession> byTeacherGroup = allTeacherSessions.stream()
+                .filter(session -> session.getSchedule() != null)
+                .filter(session -> session.getSchedule().getTeacherGroup() != null)
+                .filter(session -> session.getSchedule().getTeacherGroup().getId().equals(group.getId()))
+                .toList();
+        if (!byTeacherGroup.isEmpty()) {
+            return byTeacherGroup;
+        }
+
+        if (!hasText(group.getSubject())) {
+            return List.of();
+        }
+        return allTeacherSessions.stream()
+                .filter(session -> session.getSchedule() != null)
+                .filter(session -> hasText(session.getSchedule().getSubject()))
+                .filter(session -> session.getSchedule().getSubject().equalsIgnoreCase(group.getSubject()))
+                .toList();
     }
 
     private double calculateAttendancePercentage(List<StudentAttendanceRowResponse> items) {

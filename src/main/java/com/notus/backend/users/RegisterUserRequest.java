@@ -4,6 +4,7 @@ public record RegisterUserRequest(
         Role role,
         String name,
         String email,
+        String phoneNumber,
         String teacherAccessCode
 ) {
 }

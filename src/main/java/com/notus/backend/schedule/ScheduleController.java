@@ -11,7 +11,6 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.time.LocalDate;
 import java.util.List;
 
 @RestController
@@ -24,10 +23,24 @@ public class ScheduleController {
 
     @GetMapping("/today")
     public List<ScheduleResponse> getTodaySchedule(
+            Authentication auth,
+            HttpServletRequest request,
             @RequestParam(required = false) Long teacherId,
             @RequestParam(required = false) String teacherName,
             @RequestParam(required = false) Long groupId
     ) {
+        UserDto user = currentUser(auth, request);
+        if (user.role() == Role.STUDENT) {
+            com.notus.backend.users.Student student = userService.findStudentWithGroupsByUid((String) auth.getPrincipal()).orElse(null);
+            return toResponse(scheduleService.getTodayScheduleForStudent(student));
+        }
+        if (teacherId == null && groupId == null && (teacherName == null || teacherName.isBlank())) {
+            teacherId = user.id();
+        }
+        if (teacherId != null && !teacherId.equals(user.id())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz pobrać planu innego nauczyciela.");
+        }
+        scheduleService.assertTeacherGroupOwned(groupId, user.id());
         return toResponse(scheduleService.getTodaySchedule(teacherId, teacherName, groupId));
     }
 
@@ -53,8 +66,10 @@ public class ScheduleController {
     }
 
     @GetMapping("/by-day")
-    public List<ScheduleResponse> getScheduleByDay(@RequestParam String date) {
-        return toResponse(scheduleService.getScheduleByDay(LocalDate.parse(date)));
+    public List<ScheduleResponse> getScheduleByDay(Authentication auth,
+                                                   HttpServletRequest request,
+                                                   @RequestParam String date) {
+        return getScheduleByDayPath(auth, request, date);
     }
 
     @GetMapping("/day/{date}")
@@ -99,12 +114,26 @@ public class ScheduleController {
 
     @GetMapping
     public List<ScheduleResponse> getSchedule(
+            Authentication auth,
+            HttpServletRequest request,
             @RequestParam String start,
             @RequestParam String end,
             @RequestParam(required = false) Long teacherId,
             @RequestParam(required = false) String teacherName,
             @RequestParam(required = false) Long groupId
     ) {
+        UserDto user = currentUser(auth, request);
+        if (user.role() == Role.STUDENT) {
+            com.notus.backend.users.Student student = userService.findStudentWithGroupsByUid((String) auth.getPrincipal()).orElse(null);
+            return toResponse(scheduleService.getScheduleForStudentInRange(student, Instant.parse(start), Instant.parse(end)));
+        }
+        if (teacherId == null && groupId == null && (teacherName == null || teacherName.isBlank())) {
+            teacherId = user.id();
+        }
+        if (teacherId != null && !teacherId.equals(user.id())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Nie możesz pobrać planu innego nauczyciela.");
+        }
+        scheduleService.assertTeacherGroupOwned(groupId, user.id());
         return toResponse(scheduleService.getSchedule(
                 Instant.parse(start),
                 Instant.parse(end),
@@ -172,5 +201,12 @@ public class ScheduleController {
 
     private List<ScheduleResponse> toResponse(List<Schedule> schedules) {
         return schedules.stream().map(ScheduleResponse::from).toList();
+    }
+
+    private UserDto currentUser(Authentication auth, HttpServletRequest request) {
+        String uid = (String) auth.getPrincipal();
+        String email = (String) request.getAttribute("clerk_email");
+        String name = (String) request.getAttribute("clerk_name");
+        return userService.findOrCreate(uid, email, name);
     }
 }

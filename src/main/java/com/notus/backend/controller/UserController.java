@@ -59,7 +59,8 @@ public class UserController {
                 email,
                 finalName,
                 registerRequest != null ? registerRequest.role() : null,
-                registerRequest != null ? registerRequest.teacherAccessCode() : null
+                registerRequest != null ? registerRequest.teacherAccessCode() : null,
+                registerRequest != null ? registerRequest.phoneNumber() : null
         );
     }
 }

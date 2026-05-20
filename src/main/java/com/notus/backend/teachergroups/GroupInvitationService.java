@@ -76,17 +76,14 @@ public class GroupInvitationService {
                 return new InviteStudentResponse(false, "Ten uczeń jest już w grupie.");
             }
             Instant emailResendAvailableAt = latestResendAvailableAt(emailInvitations);
+            if (emailResendAvailableAt != null && Instant.now().isBefore(emailResendAvailableAt)) {
+                return new InviteStudentResponse(false,
+                        "Zaproszenie na ten email zostało już wysłane. Ponów za " + cooldownLabel(emailResendAvailableAt) + ".");
+            }
             GroupInvitation invitation = emailInvitations.stream()
                     .filter(item -> item.getStatus() != GroupInvitationStatus.ACCEPTED)
                     .findFirst()
                     .orElse(null);
-            if (invitation != null && invitation.getStatus() == GroupInvitationStatus.PENDING
-                    && invitation.getExpiresAt().isAfter(Instant.now())
-                    && emailResendAvailableAt != null
-                    && Instant.now().isBefore(emailResendAvailableAt)) {
-                return new InviteStudentResponse(false,
-                        "Zaproszenie na ten email zostało już wysłane. Ponów za " + cooldownLabel(emailResendAvailableAt) + ".");
-            }
             if (invitation == null) {
                 invitation = new GroupInvitation();
                 invitation.setGroup(group);
@@ -94,7 +91,7 @@ public class GroupInvitationService {
                 invitation.setCreatedByTeacher(group.getTeacher());
             }
 
-            sendInvitation(invitation, group);
+            sendInvitation(invitation, group, invitation.getId() != null);
             return new InviteStudentResponse(true, "Zaproszenie zostało wysłane.");
         } catch (ResponseStatusException ex) {
             if (ex.getStatusCode().is4xxClientError() && ex.getStatusCode() != HttpStatus.FORBIDDEN) {
@@ -155,7 +152,6 @@ public class GroupInvitationService {
     public List<GroupInvitationResponse> listForGroup(String teacherUid, Long groupId) {
         TeacherGroup group = groupService.requireOwnedGroup(teacherUid, groupId);
         cancelAcceptedInvitationsWithoutActiveMembership(group);
-        reconcileAcceptedDuplicates(group);
         return invitationRepository.findByGroupOrderByCreatedAtDesc(group)
                 .stream()
                 .map(this::toResponse)
@@ -192,13 +188,13 @@ public class GroupInvitationService {
 
         Instant now = Instant.now();
         Instant availableAt = latestResendAvailableAt(invitationsForEmail(group, invitation.getEmail()));
-        if (invitation.getStatus() != GroupInvitationStatus.FAILED && availableAt != null && now.isBefore(availableAt)) {
+        if (availableAt != null && now.isBefore(availableAt)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
                     "Zaproszenie można ponowić po upływie 24 godzin od ostatniej wysyłki.");
         }
 
         try {
-            sendInvitation(invitation, group);
+            sendInvitation(invitation, group, true);
         } catch (RuntimeException ex) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, GENERIC_INVITE_ERROR);
         }
@@ -261,6 +257,12 @@ public class GroupInvitationService {
     }
 
     private Instant resendAvailableAt(GroupInvitation invitation) {
+        if (invitation.getStatus() == GroupInvitationStatus.FAILED) {
+            return null;
+        }
+        if (resendCount(invitation) <= 0) {
+            return null;
+        }
         Instant lastSentAt = lastSentAt(invitation);
         return lastSentAt == null ? null : lastSentAt.plus(RESEND_COOLDOWN_HOURS, ChronoUnit.HOURS);
     }
@@ -282,7 +284,7 @@ public class GroupInvitationService {
                 ));
     }
 
-    private void sendInvitation(GroupInvitation invitation, TeacherGroup group) {
+    private void sendInvitation(GroupInvitation invitation, TeacherGroup group, boolean resendAttempt) {
         String rawToken = generateRawToken();
         Instant now = Instant.now();
         invitation.setTokenHash(hashService.sha256(rawToken));
@@ -298,6 +300,9 @@ public class GroupInvitationService {
         try {
             emailService.sendGroupInvitation(invitation.getEmail(), group.getName(), group.getTeacher().getName(), inviteLink);
             invitation.setLastSentAt(Instant.now());
+            if (resendAttempt) {
+                invitation.setResendCount(resendCount(invitation) + 1);
+            }
             invitation.setStatus(GroupInvitationStatus.PENDING);
             invitation = invitationRepository.save(invitation);
             cancelDuplicatePendingInvitations(invitation);
@@ -334,6 +339,10 @@ public class GroupInvitationService {
                 .orElse(null);
     }
 
+    private int resendCount(GroupInvitation invitation) {
+        return invitation.getResendCount() == null ? 0 : invitation.getResendCount();
+    }
+
     private void cancelDuplicatePendingInvitations(GroupInvitation activeInvitation) {
         if (activeInvitation.getEmail() == null || activeInvitation.getEmail().isBlank()) {
             return;
@@ -351,24 +360,6 @@ public class GroupInvitationService {
                     invitation.setStatus(GroupInvitationStatus.CANCELLED);
                     invitationRepository.save(invitation);
                 });
-    }
-
-    private void reconcileAcceptedDuplicates(TeacherGroup group) {
-        List<GroupInvitation> invitations = invitationRepository.findByGroupOrderByCreatedAtDesc(group);
-        invitations.stream()
-                .filter(invitation -> invitation.getEmail() != null && !invitation.getEmail().isBlank())
-                .filter(invitation -> invitation.getStatus() == GroupInvitationStatus.ACCEPTED)
-                .forEach(accepted -> invitations.stream()
-                        .filter(candidate -> !candidate.getId().equals(accepted.getId()))
-                        .filter(candidate -> candidate.getStatus() == GroupInvitationStatus.PENDING)
-                        .filter(candidate -> candidate.getEmail() != null
-                                && candidate.getEmail().equalsIgnoreCase(accepted.getEmail()))
-                        .forEach(candidate -> {
-                            candidate.setStatus(GroupInvitationStatus.ACCEPTED);
-                            candidate.setAcceptedAt(accepted.getAcceptedAt());
-                            candidate.setAcceptedBy(accepted.getAcceptedBy());
-                            invitationRepository.save(candidate);
-                        }));
     }
 
     private void cancelAcceptedInvitationsWithoutActiveMembership(TeacherGroup group) {

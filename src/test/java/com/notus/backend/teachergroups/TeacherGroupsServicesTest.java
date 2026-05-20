@@ -13,6 +13,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Optional;
 
@@ -93,6 +94,29 @@ class TeacherGroupsServicesTest {
     }
 
     @Test
+    void createGroupReturnsExistingActiveDuplicateInsteadOfSavingAnotherOne() {
+        TeacherGroupService service = new TeacherGroupService(groupRepository, membershipRepository, userService);
+        group.setSchoolYear("2025/2026");
+        group.setSemester("2");
+
+        when(userService.findTeacherByUid("teacher-uid")).thenReturn(Optional.of(teacher));
+        when(groupRepository.findActiveDuplicates(teacher, "Matematyka 1A", "Matematyka", "2025/2026", "2"))
+                .thenReturn(List.of(group));
+        when(membershipRepository.countByGroupAndStatus(group, GroupMembershipStatus.ACTIVE)).thenReturn(0L);
+
+        TeacherGroupResponse response = service.create("teacher-uid", new CreateTeacherGroupRequest(
+                " Matematyka 1A ",
+                "Opis",
+                "Matematyka",
+                "2025/2026",
+                "2"
+        ));
+
+        assertEquals(group.getId(), response.id());
+        verify(groupRepository, never()).save(any(TeacherGroup.class));
+    }
+
+    @Test
     void teacherCannotAccessForeignGroup() {
         TeacherGroupService service = new TeacherGroupService(groupRepository, membershipRepository, userService);
         when(userService.findTeacherByUid("teacher-uid")).thenReturn(Optional.of(teacher));
@@ -154,6 +178,75 @@ class TeacherGroupsServicesTest {
         verify(invitationRepository, atLeastOnce()).save(invitationCaptor.capture());
         assertFalse(response.success());
         assertEquals(GroupInvitationStatus.FAILED, invitationCaptor.getAllValues().getLast().getStatus());
+    }
+
+    @Test
+    void inviteAllowsFirstImmediateResendForExistingInvitation() {
+        TeacherGroupService groupService = mock(TeacherGroupService.class);
+        GroupInvitationService service = new GroupInvitationService(
+                invitationRepository,
+                groupService,
+                new HashService(),
+                emailService,
+                studentRepository,
+                membershipRepository,
+                "http://localhost:5173"
+        );
+        GroupInvitation existing = new GroupInvitation();
+        existing.setId(100L);
+        existing.setGroup(group);
+        existing.setEmail("student@example.com");
+        existing.setStatus(GroupInvitationStatus.CANCELLED);
+        existing.setCreatedAt(Instant.now().minus(30, ChronoUnit.MINUTES));
+        existing.setLastSentAt(Instant.now().minus(30, ChronoUnit.MINUTES));
+        existing.setResendCount(0);
+        existing.setExpiresAt(Instant.now().plus(7, ChronoUnit.DAYS));
+
+        when(groupService.requireOwnedGroup("teacher-uid", 5L)).thenReturn(group);
+        when(studentRepository.findByEmailIgnoreCase("student@example.com")).thenReturn(Optional.empty());
+        when(invitationRepository.findByGroupAndEmailIgnoreCaseOrderByCreatedAtDesc(group, "student@example.com"))
+                .thenReturn(List.of(existing));
+        when(invitationRepository.save(existing)).thenReturn(existing);
+
+        InviteStudentResponse response = service.invite("teacher-uid", 5L, new InviteStudentRequest("student@example.com"));
+
+        assertTrue(response.success());
+        assertEquals(1, existing.getResendCount());
+        verify(emailService).sendGroupInvitation(eq("student@example.com"), eq("Matematyka 1A"), eq("Teacher"), anyString());
+    }
+
+    @Test
+    void inviteBlocksCooldownAfterFirstResendForSameEmail() {
+        TeacherGroupService groupService = mock(TeacherGroupService.class);
+        GroupInvitationService service = new GroupInvitationService(
+                invitationRepository,
+                groupService,
+                new HashService(),
+                emailService,
+                studentRepository,
+                membershipRepository,
+                "http://localhost:5173"
+        );
+        GroupInvitation existing = new GroupInvitation();
+        existing.setId(100L);
+        existing.setGroup(group);
+        existing.setEmail("student@example.com");
+        existing.setStatus(GroupInvitationStatus.CANCELLED);
+        existing.setCreatedAt(Instant.now().minus(30, ChronoUnit.MINUTES));
+        existing.setLastSentAt(Instant.now().minus(30, ChronoUnit.MINUTES));
+        existing.setResendCount(1);
+        existing.setExpiresAt(Instant.now().plus(7, ChronoUnit.DAYS));
+
+        when(groupService.requireOwnedGroup("teacher-uid", 5L)).thenReturn(group);
+        when(studentRepository.findByEmailIgnoreCase("student@example.com")).thenReturn(Optional.empty());
+        when(invitationRepository.findByGroupAndEmailIgnoreCaseOrderByCreatedAtDesc(group, "student@example.com"))
+                .thenReturn(List.of(existing));
+
+        InviteStudentResponse response = service.invite("teacher-uid", 5L, new InviteStudentRequest("student@example.com"));
+
+        assertFalse(response.success());
+        assertTrue(response.message().contains("Ponów za"));
+        verify(emailService, never()).sendGroupInvitation(anyString(), anyString(), anyString(), anyString());
     }
 
     @Test

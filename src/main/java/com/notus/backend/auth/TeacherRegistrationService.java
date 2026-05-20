@@ -7,6 +7,7 @@ import com.notus.backend.auth.dto.LoginRequest;
 import com.notus.backend.auth.dto.TeacherAuthResponse;
 import com.notus.backend.auth.dto.TeacherGoogleRegisterRequest;
 import com.notus.backend.auth.dto.TeacherRegisterRequest;
+import com.notus.backend.users.AppUserIdentityService;
 import com.notus.backend.users.Role;
 import com.notus.backend.users.StudentRepository;
 import com.notus.backend.users.Teacher;
@@ -36,6 +37,7 @@ public class TeacherRegistrationService {
     private final AuthTokenService authTokenService;
     private final HashService hashService;
     private final EmailVerificationService emailVerificationService;
+    private final AppUserIdentityService appUserIdentityService;
     private final SecureRandom secureRandom = new SecureRandom();
 
     public TeacherRegistrationService(TeacherCodeService teacherCodeService,
@@ -45,7 +47,8 @@ public class TeacherRegistrationService {
                                       PasswordEncoder passwordEncoder,
                                       AuthTokenService authTokenService,
                                       HashService hashService,
-                                      EmailVerificationService emailVerificationService) {
+                                      EmailVerificationService emailVerificationService,
+                                      AppUserIdentityService appUserIdentityService) {
         this.teacherCodeService = teacherCodeService;
         this.localAuthUserRepository = localAuthUserRepository;
         this.teacherRepository = teacherRepository;
@@ -54,6 +57,7 @@ public class TeacherRegistrationService {
         this.authTokenService = authTokenService;
         this.hashService = hashService;
         this.emailVerificationService = emailVerificationService;
+        this.appUserIdentityService = appUserIdentityService;
     }
 
     @Transactional
@@ -88,7 +92,7 @@ public class TeacherRegistrationService {
         );
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public TeacherAuthResponse login(LoginRequest request) {
         String email = normalizeEmail(request.email());
         LocalAuthUser authUser = localAuthUserRepository.findByEmailIgnoreCase(email)
@@ -100,6 +104,8 @@ public class TeacherRegistrationService {
 
         Teacher teacher = teacherRepository.findByClerkUserId(authUser.getAuthUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "To konto nie jest kontem nauczyciela"));
+        teacher.setUser(appUserIdentityService.ensureForTeacher(teacher));
+        teacher = teacherRepository.save(teacher);
 
         if (!authUser.isEmailVerified()) {
             return new TeacherAuthResponse(
@@ -140,6 +146,8 @@ public class TeacherRegistrationService {
 
         Teacher teacher = teacherRepository.findByClerkUserId(authUser.getAuthUserId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.CONFLICT, "To konto nie jest kontem nauczyciela"));
+        teacher.setUser(appUserIdentityService.ensureForTeacher(teacher));
+        teacher = teacherRepository.save(teacher);
 
         return new TeacherAuthResponse(
                 authTokenService.issueLocalToken(authUser.getAuthUserId(), authUser.getEmail()),
@@ -157,9 +165,12 @@ public class TeacherRegistrationService {
         var existingTeacher = teacherRepository.findByClerkUserId(identity.userId())
                 .or(() -> teacherRepository.findByEmailIgnoreCase(identity.email()));
         if (existingTeacher.isPresent()) {
+            Teacher teacher = existingTeacher.get();
+            teacher.setUser(appUserIdentityService.ensureForTeacher(teacher));
+            teacher = teacherRepository.save(teacher);
             return new TeacherAuthResponse(
                     null,
-                    mapTeacher(existingTeacher.get()),
+                    mapTeacher(teacher),
                     identity.emailVerified(),
                     !identity.emailVerified(),
                     identity.emailVerified() ? "Zalogowano." : "Potwierdź adres email przed zalogowaniem."
@@ -189,6 +200,7 @@ public class TeacherRegistrationService {
         teacher.setEmail(email);
         teacher.setName(resolveName(email, name));
         teacher.setRole(Role.TEACHER);
+        teacher.setUser(appUserIdentityService.ensureForTeacher(teacher));
         return teacherRepository.save(teacher);
     }
 
@@ -243,6 +255,7 @@ public class TeacherRegistrationService {
                 teacher.getEmail(),
                 teacher.getName(),
                 teacher.getRole(),
+                null,
                 null
         );
     }
